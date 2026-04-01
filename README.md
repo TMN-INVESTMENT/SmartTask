@@ -1,9 +1,4 @@
 # SmartTask
-Here's a comprehensive site description for your SmartTask application:
-
-SmartTask - Site Description
-
-🌟 Overview
 
 SmartTask is a revolutionary task-based earning platform that empowers users to generate income by completing simple daily tasks and investing in VIP packages. Built with cutting-edge technology and a user-centric design, SmartTask provides a seamless experience for earning, investing, and growing your financial portfolio.
 
