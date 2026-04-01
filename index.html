@@ -1,0 +1,3092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>SmartTask - Smart Way to Earn</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+<!-- Auth Container (Login/Signup) -->
+<div id="authContainer" class="auth-container">
+    <div class="auth-box">
+        <!-- Language Switcher -->
+        <div class="language-switcher">
+            <button class="lang-btn active" onclick="switchLanguage('en')" id="langEnBtn">
+                <img src="https://flagcdn.com/w20/gb.png" alt="English" class="flag-icon">
+                <span>English</span>
+            </button>
+            <button class="lang-btn" onclick="switchLanguage('sw')" id="langSwBtn">
+                <img src="https://flagcdn.com/w20/tz.png" alt="Kiswahili" class="flag-icon">
+                <span>Kiswahili</span>
+            </button>
+        </div>
+        
+        <div class="auth-header">
+            <div class="logo">
+                <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png" 
+                     alt="SmartTask Logo">
+            </div>
+            <p data-i18n="tagline">Smart Way to Earn</p>
+        </div>
+
+        <!-- Login Form -->
+        <div id="loginForm" class="auth-form active">
+            <h2 data-i18n="login_title">Login to Your Account</h2>
+            <div class="input-group">
+                <i class="fas fa-user"></i>
+                <input type="text" id="loginUsername" data-i18n-placeholder="username_email" placeholder="Username or Email">
+            </div>
+            <!-- Login Password -->
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="loginPassword" data-i18n-placeholder="password" placeholder="Password">
+                <button type="button" class="password-toggle-btn" data-target="loginPassword">
+                    <i class="fas fa-eye"></i>
+                    <span class="toggle-text" data-i18n="show">Show</span>
+                </button>
+            </div>
+            
+            <div class="form-options">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="rememberMe">
+                    <span class="checkmark"></span>
+                    <span data-i18n="remember_me">Remember me</span>
+                </label>
+                <a href="#" onclick="forgotPassword()" data-i18n="forgot_password">Forgot Password?</a>
+            </div>
+
+            <button onclick="handleLogin()" class="auth-btn" data-i18n="login_btn">Login</button>
+            
+            <div class="social-login">
+                <p data-i18n="or_continue_with">Or continue with</p>
+                <div class="social-icons">
+                    <button onclick="socialLogin('google')" class="social-btn google"><i class="fab fa-google"></i></button>
+                    <button onclick="socialLogin('facebook')" class="social-btn facebook"><i class="fab fa-facebook-f"></i></button>
+                    <button onclick="socialLogin('github')" class="social-btn github"><i class="fab fa-github"></i></button>
+                </div>
+            </div>
+
+            <p class="switch-text">
+                <span data-i18n="no_account">Don't have an account?</span> 
+                <a onclick="showSignup()" data-i18n="sign_up">Sign up</a>
+            </p>
+        </div>
+
+        <!-- Signup Form -->
+        <div id="signupForm" class="auth-form">
+            <h2 data-i18n="signup_title">Create Account</h2>
+            <p class="auth-subtitle" data-i18n="signup_subtitle">Join SmartTask and start earning</p>
+            
+            <div class="input-group">
+                <i class="fas fa-user"></i>
+                <input type="text" id="signupFullName" data-i18n-placeholder="full_name" placeholder="Full Name" required>
+            </div>
+            
+            <div class="input-group">
+                <i class="fas fa-at"></i>
+                <input type="text" id="signupUsername" data-i18n-placeholder="username" placeholder="Username (any characters allowed)" required>
+                <small class="input-hint" data-i18n="username_hint">You can use letters, numbers, spaces, symbols, emojis - anything!</small>
+            </div>
+            
+            <div class="input-group">
+                <i class="fas fa-envelope"></i>
+                <input type="email" id="signupEmail" data-i18n-placeholder="email" placeholder="Email Address" required>
+            </div>
+            
+            <div class="input-group">
+                <i class="fas fa-phone"></i>
+                <input type="tel" id="signupPhone" data-i18n-placeholder="phone" placeholder="Phone Number (e.g., 0712345678)" required>
+            </div>
+            
+            <!-- Signup Password with Strength Indicator -->
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="signupPassword" data-i18n-placeholder="password_min" placeholder="Password (min. 6 characters)">
+                <button type="button" class="password-toggle-btn" data-target="signupPassword">
+                    <i class="fas fa-eye"></i>
+                    <span class="toggle-text" data-i18n="show">Show</span>
+                </button>
+            </div>
+
+            <!-- Confirm Password -->
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="signupConfirmPassword" data-i18n-placeholder="confirm_password" placeholder="Confirm Password">
+                <button type="button" class="password-toggle-btn" data-target="signupConfirmPassword">
+                    <i class="fas fa-eye"></i>
+                    <span class="toggle-text" data-i18n="show">Show</span>
+                </button>
+            </div>
+            
+            <div class="input-group">
+                <i class="fas fa-gift"></i>
+                <input type="text" id="signupReferral" data-i18n-placeholder="referral_code" placeholder="Referral Code (Optional)">
+            </div>
+            
+            <div class="terms-checkbox">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="termsAgree" required>
+                    <span class="checkmark"></span>
+                    <span data-i18n="terms_agree">I agree to the</span>
+                    <a href="#" onclick="showTerms(); return false;" data-i18n="terms_conditions">Terms and Conditions</a>
+                </label>
+            </div>
+            
+            <button type="button" onclick="handleSignup()" class="auth-btn" data-i18n="signup_btn">
+                <i class="fas fa-user-plus"></i>
+                <span data-i18n="create_account">Create Account</span>
+            </button>
+            
+            <p class="switch-text">
+                <span data-i18n="have_account">Already have an account?</span>
+                <a href="#" onclick="showLogin(); return false;" data-i18n="login">Login</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+    <!-- User Dashboard -->
+    <div id="userDashboard" class="dashboard user-dashboard">
+        <!-- User Dashboard Header -->
+<div class="dashboard-header">
+    <div class="header-left">
+        <i class="fas fa-bars menu-toggle" onclick="toggleSidebar()"></i>
+        <h2>SmartTask</h2>
+    </div>
+    <div class="header-right">
+        
+        <div class="language-switcher">
+    <button class="lang-btn" onclick="switchLanguage('en')" id="langEnBtn">
+        <i class="fas fa-language"></i> EN
+    </button>
+    <button class="lang-btn" onclick="switchLanguage('sw')" id="langSwBtn">
+        <i class="fas fa-language"></i> SW
+    </button>
+</div>
+        
+        <div class="notification-icon" onclick="toggleNotifications()">
+            <i class="fas fa-bell"></i>
+            <span class="notification-badge" id="notificationBadge">0</span>
+        </div>
+        <div class="user-profile" onclick="toggleUserMenu()">
+            <div class="user-profile-img" id="userProfileImg" style="width:35px;height:35px;border-radius:50%;background:#4CAF50;color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">U</div>
+            <span id="userDisplayName"></span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+    </div>
+</div>
+
+<div id="userMenu" class="user-menu">
+    <div class="user-info-header">
+        <div class="user-name" id="menuUserName">User Name</div>
+        <div class="user-email" id="menuUserEmail">user@example.com</div>
+    </div>
+    
+    <!-- Profile Section -->
+    <a onclick="showAdvancedUserProfile()">
+        <i class="fas fa-user"></i>
+        <span>My Profile</span>
+    </a>
+    
+    <!-- Payment Methods Section -->
+    <a onclick="showPaymentMethods()">
+        <i class="fas fa-credit-card"></i>
+        <span>Commission Payment</span>
+    </a>
+    
+    <!-- User Bank Accounts Section -->
+<a onclick="showUserBankAccounts()">
+    <i class="fas fa-university"></i>
+    <span>My Bank Accounts</span>
+    <span class="bank-accounts-badge" id="bankAccountsBadge" style="display: none;">0</span>
+</a>
+
+<!-- In your user menu dropdown -->
+<a onclick="showSocialLinksModal()">
+    <i class="fas fa-share-alt"></i>
+    <span>Social Links</span>
+    <span class="social-links-badge" id="socialLinksBadge" style="display: none;">!</span>
+</a>
+    
+    <!-- Weekly Commission Section - NEW -->
+    <a onclick="showWeeklyCommission()">
+        <i class="fas fa-calendar-week"></i>
+        <span>Weekly Commission</span>
+        <span class="commission-badge" id="commissionBadge">0 TZS</span>
+    </a>
+    
+    <!-- Settings Section -->
+    <a onclick="showUserSettings()">
+        <i class="fas fa-cog"></i>
+        <span>Settings</span>
+    </a>
+    
+    <hr>
+    
+    <!-- Logout -->
+    <a onclick="logout()">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+    </a>
+</div>
+
+        <!-- Sidebar -->
+        <div id="sidebar" class="sidebar">
+<div class="sidebar-header">
+    <div class="sidebar-logo">
+        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png" 
+             alt="SmartTask Logo" 
+             style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; background: white;">
+    </div>
+    <h3>SmartTask</h3>
+</div>
+            <ul class="sidebar-menu">
+                <li class="active" onclick="switchUserTab('overview')"><i class="fas fa-home"></i> <span>Overview</span></li>
+                <li onclick="switchUserTab('packages')"><i class="fas fa-box"></i> <span>VIP Packages</span></li>
+                <li onclick="switchUserTab('tasks1')"><i class="fas fa-tasks"></i> <span>Daily Tasks</span></li>
+                <li onclick="switchUserTab('deposit')"><i class="fas fa-credit-card"></i> <span>Deposit</span></li>
+                <li onclick="switchUserTab('withdraw')"><i class="fas fa-money-bill-wave"></i> <span>Withdraw</span></li>
+                <li onclick="switchUserTab('referrals')"><i class="fas fa-users"></i> <span>Referrals</span></li>
+                <li onclick="switchUserTab('history')"><i class="fas fa-history"></i> <span>History</span></li>
+            </ul>
+        </div>
+
+        <!-- User Main Content -->
+        <div class="main-content" id="userMainContent">
+            <!-- Overview Tab -->
+            <div id="overviewTab" class="tab-content active">
+                <h2>Welcome Back, <span id="welcomeName">User</span>!</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <i class="fas fa-wallet"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Balance</span>
+                            <span class="stat-value" id="userBalance">0 TZS</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-tasks"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Tasks Done</span>
+                            <span class="stat-value" id="tasksDone">0/3</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-gift"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Referral Bonus</span>
+                            <span class="stat-value" id="referralBonus">0 TZS</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-box"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Active Packages</span>
+                            <span class="stat-value" id="activePackages">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="daily-tasks-card">
+                    <h3>Today's Tasks <span class="badge">3 Tasks Required</span></h3>
+                    <div class="task-list" id="taskList">
+                        <!-- Tasks will be populated here -->
+                    </div>
+                </div>
+
+                <div class="active-packages-card">
+                    <h3>Your Active Packages</h3>
+                    <div class="packages-list" id="userPackages">
+                        <!-- Packages will be populated here -->
+                    </div>
+                </div>
+                
+                               <!-- Announcements Section -->
+               <div id="announcementsContainer" class="announcements-container">
+                   <div class="announcements-header">
+                       <i class="fas fa-bullhorn"></i>
+                       <h3>Latest Announcements</h3>
+                       <span class="announcement-badge" id="announcementCount">0</span>
+                   </div>
+                   <div class="announcements-list" id="announcementsList">
+                       <div class="announcement-loading">
+                           <i class="fas fa-spinner fa-spin"></i> Loading announcements...
+                       </div>
+                   </div>
+               </div>
+               
+               <!-- Transaction Simulator Section -->
+<div id="transactionSimulator" class="transaction-simulator">
+    <div class="simulator-header">
+        <h3><i class="fas fa-exchange-alt"></i> Live Transactions</h3>
+        <div class="simulator-controls">
+            <span class="live-badge">
+                <i class="fas fa-circle"></i> LIVE
+            </span>
+            <button onclick="toggleTransactionSimulator()" class="simulator-toggle">
+                <i class="fas fa-chart-line"></i>
+            </button>
+        </div>
+    </div>
+    
+    <div class="transactions-scroll-container" id="transactionsScrollContainer">
+        <div class="transactions-timeline" id="transactionsTimeline">
+            <div class="timeline-line"></div>
+            <div class="transactions-list" id="liveTransactionsList">
+                <div class="loading-transactions">
+                    <i class="fas fa-spinner fa-spin"></i> Loading live transactions...
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="simulator-stats">
+        <div class="stat">
+            <span>Today's Deposits</span>
+            <strong id="todayDeposits">0 TZS</strong>
+        </div>
+        <div class="stat">
+            <span>Today's Withdrawals</span>
+            <strong id="todayWithdrawals">0 TZS</strong>
+        </div>
+        <div class="stat">
+            <span>Active Transactions</span>
+            <strong id="activeTransactions">0</strong>
+        </div>
+    </div>
+</div>
+</div>
+            
+            <!-- Packages Tab -->
+            <div id="packagesTab" class="tab-content">
+                <h2>VIP Investment Packages</h2>
+                <div class="packages-grid" id="packagesGrid">
+                    <!-- VIP packages will be populated here -->
+                </div>
+            </div>
+
+<!-- ========== USER TASKS TAB (tasks1) ========== -->
+<div id="tasks1Tab" class="tab-content">
+    <div class="tasks-header">
+        <h2>Daily Tasks</h2>
+        <p>Complete your tasks to earn daily profits</p>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="tasks-progress">
+        <div class="progress-label">
+            <span>Today's Progress</span>
+            <span id="taskProgressText">0/3 Tasks Completed</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="taskProgressFill" style="width: 0%;"></div>
+        </div>
+    </div>
+
+    <!-- Task List (dynamic) -->
+    <div class="daily-tasks-list" id="dailyTasksList">
+        <!-- Tasks will be inserted here by JavaScript -->
+        <p class="loading-tasks">Loading tasks...</p>
+    </div>
+</div>
+
+<!-- Deposit Tab - Simple Form -->
+<div id="depositTab" class="tab-content">
+    <h2>Make a Deposit</h2>
+    
+    <div class="deposit-form-container">
+        <!-- Info Card -->
+        <div class="info-card">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <h4>Deposit Information</h4>
+                <p>Minimum deposit: 10,000 TZS | Maximum deposit: 10,000,000 TZS</p>
+            </div>
+        </div>
+        
+        <!-- Deposit Form -->
+        <form id="depositForm" onsubmit="event.preventDefault(); processDepositForm();">
+            <!-- Payment Method Selection -->
+            <div class="form-section">
+                <h3><i class="fas fa-credit-card"></i> Select Payment Method</h3>
+                <div class="payment-methods-grid" id="depositPaymentMethodsGrid">
+                    <!-- Payment methods will be populated here -->
+                    <div class="loading-methods">Loading payment methods...</div>
+                </div>
+                <div id="paymentMethodError" class="error-message" style="display: none;">Please select a payment method</div>
+            </div>
+            
+            <!-- Selected Bank Details (shown after selection) -->
+            <div id="selectedBankDetails" class="bank-details-card" style="display: none;">
+                <h4>Pay To:</h4>
+                <div class="detail-row">
+                    <span class="label">Bank:</span>
+                    <span class="value" id="selectedBankName"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Account Number:</span>
+                    <span class="value" id="selectedBankAccount"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Account Name:</span>
+                    <span class="value" id="selectedBankAccountName"></span>
+                </div>
+                <button type="button" class="copy-btn" onclick="copyBankDetails()">
+                    <i class="fas fa-copy"></i> Copy Account Number
+                </button>
+            </div>
+            
+            <!-- User Details -->
+            <div class="form-section">
+                <h3><i class="fas fa-user"></i> Your Details</h3>
+                
+                <div class="form-group">
+                    <label for="depositFullName">Full Name *</label>
+                    <input type="text" id="depositFullName" name="fullName" placeholder="Enter your full name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="depositPhoneNumber">Phone Number *</label>
+                    <input type="tel" id="depositPhoneNumber" name="phoneNumber" placeholder="Enter your phone number" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="depositAmount">Amount (TZS) *</label>
+                    <input type="number" id="depositAmount" name="amount" placeholder="Minimum 10,000" min="10000" step="1000" required>
+                </div>
+            </div>
+            
+            <!-- Transaction Details -->
+            <div class="form-section">
+                <h3><i class="fas fa-hashtag"></i> Transaction Details</h3>
+                
+                <div class="form-group">
+                    <label for="transactionReference">Transaction Reference *</label>
+                    <input type="text" id="transactionReference" name="transactionReference" placeholder="Enter the transaction code from your payment" required>
+                    <small>You can find this in your SMS or transaction history</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="depositDate">Payment Date</label>
+                    <input type="date" id="depositDate" name="depositDate" value="<?php echo date('Y-m-d'); ?>">
+                </div>
+            </div>
+            
+            <!-- Terms and Submit -->
+            <div class="form-section">
+                <div class="terms-checkbox">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="depositTerms" required>
+                        <span class="checkmark"></span>
+                        I confirm that the information provided is correct and I have made the payment to the specified account
+                    </label>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="depositSubmitBtn">
+                    <i class="fas fa-paper-plane"></i> Submit Deposit Request
+                </button>
+            </div>
+        </form>
+        
+        <!-- Loading Overlay for Form -->
+        <div id="depositFormLoading" class="form-loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Processing your deposit request...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Social Links Modal for Users -->
+<div id="socialLinksModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeSocialLinksModal()">&times;</span>
+        <h2><i class="fas fa-share-alt"></i> Follow Our Social Media</h2>
+        <p class="modal-subtitle">Follow our social media pages to stay updated and earn rewards!</p>
+        
+        <div class="social-links-progress">
+            <div class="progress-label">
+                <span>Completion Progress</span>
+                <span id="socialLinksProgressText">0/0 Completed</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="socialLinksProgressFill" style="width: 0%;"></div>
+            </div>
+        </div>
+        
+        <div class="social-links-list" id="socialLinksList">
+            <!-- Social links will be populated here -->
+        </div>
+        
+        <div class="social-links-info">
+            <div class="info-box">
+                <i class="fas fa-gift"></i>
+                <div>
+                    <strong>Reward Information</strong>
+                    <p>Follow each link to earn reward points. Complete all required links to unlock additional bonuses!</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-actions">
+            <button onclick="checkAllSocialLinks()" class="action-btn success">
+                <i class="fas fa-check-double"></i> Verify All
+            </button>
+            <button onclick="closeSocialLinksModal()" class="action-btn secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Withdraw Tab - Step by Step -->
+<div id="withdrawTab" class="tab-content">
+    <h2>Withdraw Funds</h2>
+    
+    <!-- Withdrawal Info -->
+    <div class="withdraw-info-bar">
+        <div class="info-item">
+            <i class="fas fa-info-circle"></i>
+            <span>Min: 3,000 TZS</span>
+        </div>
+        <div class="info-item">
+            <i class="fas fa-clock"></i>
+            <span>Once per day</span>
+        </div>
+        <div class="info-item">
+            <i class="fas fa-gift"></i>
+            <span>Referral earnings withdrawable anytime</span>
+        </div>
+    </div>
+    
+    <!-- Balance Display -->
+    <div class="balance-cards">
+        <div class="balance-card">
+            <span class="balance-label">Available Balance</span>
+            <span class="balance-amount" id="withdrawBalance">0 TZS</span>
+        </div>
+        <div class="balance-card referral">
+            <span class="balance-label">Referral Earnings</span>
+            <span class="balance-amount" id="referralBalance">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Step Progress for Withdrawal -->
+    <div class="step-progress">
+        <div class="step active" id="withdrawStep1Indicator">
+            <span class="step-number">1</span>
+            <span class="step-label">Select Account</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="withdrawStep2Indicator">
+            <span class="step-number">2</span>
+            <span class="step-label">Enter Amount</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" id="withdrawStep3Indicator">
+            <span class="step-number">3</span>
+            <span class="step-label">Confirm</span>
+        </div>
+    </div>
+    
+    <!-- Step 1: Select Bank Account -->
+    <div id="withdrawStep1" class="step-content active">
+        <div class="step-header">
+            <h3>Your Bank Accounts</h3>
+            <p>Select an account to withdraw to</p>
+        </div>
+        
+        <!-- Saved Accounts List -->
+        <div class="saved-accounts" id="savedAccountsList">
+            <!-- Accounts will be populated here -->
+            <div class="loading-accounts">Loading your accounts...</div>
+        </div>
+        
+        <div class="step-actions">
+            <button class="action-btn" onclick="nextWithdrawStep(1)" disabled id="withdrawStep1Next">Continue</button>
+        </div>
+    </div>
+    
+    <!-- Step 2: Enter Amount -->
+    <div id="withdrawStep2" class="step-content">
+        <div class="step-header">
+            <h3>Enter Withdrawal Amount</h3>
+            <p>How much would you like to withdraw?</p>
+            <button class="back-btn" onclick="prevWithdrawStep(2)"><i class="fas fa-arrow-left"></i> Back</button>
+        </div>
+        
+        <div class="selected-account-info" id="selectedAccountInfo">
+            <!-- Selected account will be shown here -->
+        </div>
+        
+        <div class="form-group">
+            <label>Amount (TZS) *</label>
+            <input type="number" id="withdrawAmount" placeholder="Minimum 3,000" min="3000" required>
+            <small>Available: <span id="availableBalance">0 TZS</span></small>
+        </div>
+        
+        <div class="withdrawal-limits">
+            <p><i class="fas fa-info-circle"></i> Maximum withdrawal per day: 1,000,000 TZS</p>
+        </div>
+        
+        <div class="step-actions">
+            <button class="action-btn" onclick="nextWithdrawStep(2)">Continue</button>
+        </div>
+    </div>
+    
+    <!-- Step 3: Confirm Withdrawal -->
+    <div id="withdrawStep3" class="step-content">
+        <div class="step-header">
+            <h3>Confirm Withdrawal</h3>
+            <p>Please review your withdrawal details</p>
+            <button class="back-btn" onclick="prevWithdrawStep(3)"><i class="fas fa-arrow-left"></i> Back</button>
+        </div>
+        
+        <div class="withdrawal-summary" id="withdrawalSummary">
+            <!-- Summary will be populated here -->
+        </div>
+        
+        <div class="confirmation-checkbox">
+            <label class="checkbox-container">
+                <input type="checkbox" id="withdrawConfirm">
+                <span class="checkmark"></span>
+                I confirm that the above details are correct
+            </label>
+        </div>
+        
+        <div class="step-actions">
+            <button class="action-btn" onclick="submitWithdrawal()">Confirm Withdrawal</button>
+        </div>
+    </div>
+</div>
+
+            <!-- Referrals Tab -->
+            <div id="referralsTab" class="tab-content">
+                <h2>Referral Program</h2>
+                <div class="referral-container">
+                    <div class="referral-stats">
+                        <div class="stat-card small">
+                            <i class="fas fa-users"></i>
+                            <span>Total Referrals: <strong id="totalReferrals">0</strong></span>
+                        </div>
+                        <div class="stat-card small">
+                            <i class="fas fa-money-bill"></i>
+                            <span>Level 1 Comm: <strong id="level1Comm">0 TZS</strong></span>
+                        </div>
+                        <div class="stat-card small">
+                            <i class="fas fa-money-bill"></i>
+                            <span>Level 2 Comm: <strong id="level2Comm">0 TZS</strong></span>
+                        </div>
+                        <div class="stat-card small">
+                            <i class="fas fa-money-bill"></i>
+                            <span>Level 3 Comm: <strong id="level3Comm">0 TZS</strong></span>
+                        </div>
+                    </div>
+
+<div class="referral-link-box">
+    <h3>Your Referral Link</h3>
+    <div class="link-display">
+        <input type="text" id="referralLink" readonly>
+        <button onclick="copyReferralLink()"><i class="fas fa-copy"></i></button>
+    </div>
+    <p class="referral-note">Share this link with friends. You earn 10% from Level 1, 3% from Level 2, and 1% from Level 3!</p>
+</div>
+
+                    <div class="referral-list">
+                        <h3>Your Referrals</h3>
+                        <table class="referral-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Level</th>
+                                    <th>Join Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="referralTableBody">
+                                <!-- Referrals will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            
+
+            <!-- History Tab -->
+            <div id="historyTab" class="tab-content">
+                <h2>Transaction History</h2>
+                <div class="history-filters">
+                    <button class="filter-btn active" onclick="filterHistory('all')">All</button>
+                    <button class="filter-btn" onclick="filterHistory('deposit')">Deposits</button>
+                    <button class="filter-btn" onclick="filterHistory('withdrawal')">Withdrawals</button>
+                    <button class="filter-btn" onclick="filterHistory('profit')">Profits</button>
+                </div>
+                <div class="history-list" id="historyList">
+                    <!-- History items will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminDashboard" class="dashboard admin-dashboard">
+    <div class="dashboard-header">
+        <div class="header-left">
+            <i class="fas fa-bars menu-toggle" onclick="toggleSidebar()"></i>
+            <h2>SmartTask Admin</h2>
+        </div>
+        <div class="header-right">
+            <i class="fas fa-bell notification-icon"></i>
+            <div class="user-profile" onclick="toggleUserMenu()">
+                <div style="width:35px;height:35px;border-radius:50%;background:#FF5722;color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">A</div>
+                <span>Admin</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Admin User Menu - MUST BE INSIDE adminDashboard -->
+    <div id="adminUserMenu" class="user-menu">
+        <div class="user-info-header">
+            <div class="user-name" id="adminMenuName">Administrator</div>
+            <div class="user-email" id="adminMenuEmail">admin@smarttask.com</div>
+        </div>
+        <a onclick="showAdminProfile()">
+            <i class="fas fa-user-shield"></i>
+            <span>Admin Profile</span>
+        </a>
+        <a onclick="showSystemSettings()">
+            <i class="fas fa-sliders-h"></i>
+            <span>System Settings</span>
+        </a>
+
+        <hr>
+        <a onclick="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+        </a>
+    </div>
+    
+        <!-- Admin Sidebar -->
+        <div id="adminSidebar" class="sidebar">
+<div class="sidebar-header">
+    <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;margin:0 auto 10px;">
+        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png" 
+             alt="SmartTask Logo" 
+             style="width:100%;height:100%;object-fit:cover; background: papayawhip;">
+    </div>
+    <h3>Admin Panel</h3>
+</div>
+            <ul class="sidebar-menu">
+    <li class="active" onclick="switchAdminTab('dashboard')">
+        <i class="fas fa-chart-line"></i> <span>Dashboard</span>
+    </li>
+    <li onclick="switchAdminTab('users')">
+        <i class="fas fa-users"></i> <span>Users</span>
+    </li>
+    <li onclick="switchAdminTab('deposits')">
+        <i class="fas fa-credit-card"></i> <span>Deposits</span>
+    </li>
+    <li onclick="switchAdminTab('withdrawals')">
+        <i class="fas fa-money-bill-wave"></i> <span>Withdrawals</span>
+    </li>
+    <!-- ✅ NEW TASKS MENU ITEM -->
+<li onclick="switchAdminTab('tasks')">
+    <i class="fas fa-tasks"></i>
+    <span>Tasks</span>
+</li>
+        <!-- Add this menu item to admin sidebar -->
+<li onclick="switchAdminTab('announcements')">
+    <i class="fas fa-bullhorn"></i> <span>Announcements</span>
+</li>
+<li onclick="switchAdminTab('bankAccounts')">
+    <i class="fas fa-university"></i> <span>Bank Accounts</span>
+</li>
+<li onclick="switchSuperAdminTab('socialLinks')">
+    <i class="fas fa-share-alt"></i> <span>Social Links</span>
+</li>
+    <li onclick="switchAdminTab('settings')">
+        <i class="fas fa-cog"></i> <span>Settings</span>
+    </li>
+</ul>
+        </div>
+
+        <!-- Admin Main Content -->
+        <div class="main-content" id="adminMainContent">
+            <!-- Admin Dashboard Tab -->
+            <div id="adminDashboardTab" class="tab-content active">
+                <h2>Admin Overview</h2>
+                <!-- Add this button to your admin dashboard header -->
+<button onclick="refreshAdminStatistics()" class="refresh-stats-btn" title="Refresh Statistics">
+    <i class="fas fa-sync-alt"></i> Refresh Stats
+</button>
+                <div class="stats-grid">
+<div class="stats-grid">
+    <!-- Total Users Card -->
+    <div class="stat-card">
+        <i class="fas fa-users"></i>
+        <div class="stat-info">
+            <span class="stat-label">Total Users</span>
+            <span class="stat-value" id="statTotalUsers">0</span>
+        </div>
+    </div>
+    
+    <!-- Total Deposits Card -->
+    <div class="stat-card">
+        <i class="fas fa-credit-card"></i>
+        <div class="stat-info">
+            <span class="stat-label">Total Deposits</span>
+            <span class="stat-value" id="statTotalDeposits">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Total Withdrawals Card -->
+    <div class="stat-card">
+        <i class="fas fa-money-bill-wave"></i>
+        <div class="stat-info">
+            <span class="stat-label">Total Withdrawals</span>
+            <span class="stat-value" id="statTotalWithdrawals">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Platform Profit Card -->
+    <div class="stat-card">
+        <i class="fas fa-chart-line"></i>
+        <div class="stat-info">
+            <span class="stat-label">Platform Profit</span>
+            <span class="stat-value" id="statPlatformProfit">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Pending Deposits Card -->
+    <div class="stat-card">
+        <i class="fas fa-clock"></i>
+        <div class="stat-info">
+            <span class="stat-label">Pending Deposits</span>
+            <span class="stat-value" id="statPendingDeposits">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Pending Withdrawals Card -->
+    <div class="stat-card">
+        <i class="fas fa-hourglass-half"></i>
+        <div class="stat-info">
+            <span class="stat-label">Pending Withdrawals</span>
+            <span class="stat-value" id="statPendingWithdrawals">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Total Withdrawal Fees Card -->
+<!-- Withdrawal Fees Card -->
+<div class="stat-card">
+    <i class="fas fa-percent"></i>
+    <div class="stat-info">
+        <span class="stat-label">Withdrawal Fees Collected</span>
+        <span class="stat-value" id="statWithdrawalFees">0 TZS</span>
+        <small class="stat-subtitle">10% fee on all withdrawals</small>
+    </div>
+</div>
+    
+    <!-- Active Users Card -->
+    <div class="stat-card">
+        <i class="fas fa-user-check"></i>
+        <div class="stat-info">
+            <span class="stat-label">Active Users</span>
+            <span class="stat-value" id="statActiveUsers">0</span>
+        </div>
+    </div>
+</div>
+                </div>
+
+                <div class="recent-activities">
+                    <h3>Recent Activities</h3>
+                    <div class="activity-list" id="activityList">
+                        <!-- Activities will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+<!-- Social Links Management Tab -->
+<div id="superAdminSocialLinksTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-share-alt"></i> Social Media Links Management</h2>
+        <button onclick="addNewSocialLink()" class="action-btn">
+            <i class="fas fa-plus"></i> Add New Link
+        </button>
+    </div>
+    
+    <div class="social-links-stats">
+        <div class="stat-mini-card">
+            <span>Total Links</span>
+            <span id="totalSocialLinks">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span>Active Links</span>
+            <span id="activeSocialLinks">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span>Total Points Available</span>
+            <span id="totalPointsAvailable">0</span>
+        </div>
+    </div>
+    
+    <div class="social-links-grid" id="socialLinksGrid">
+        <!-- Social links will be populated here -->
+    </div>
+</div>
+
+<!-- Add/Edit Social Link Modal -->
+<div id="socialLinkModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeSocialLinkModal()">&times;</span>
+        <h2 id="socialLinkModalTitle">Add Social Link</h2>
+        <form id="socialLinkForm" onsubmit="event.preventDefault(); saveSocialLink();">
+            <input type="hidden" id="socialLinkId">
+            
+            <div class="form-group">
+                <label>Platform Name *</label>
+                <input type="text" id="socialLinkPlatform" placeholder="e.g., WhatsApp, Telegram" required>
+            </div>
+            
+            <div class="form-group">
+                <label>URL *</label>
+                <input type="url" id="socialLinkUrl" placeholder="https://..." required>
+            </div>
+            
+            <div class="form-group">
+                <label>Label (Display Text)</label>
+                <input type="text" id="socialLinkLabel" placeholder="Join our WhatsApp group">
+            </div>
+            
+            <div class="form-group">
+                <label>Icon Class</label>
+                <select id="socialLinkIcon">
+                    <option value="fab fa-whatsapp">WhatsApp</option>
+                    <option value="fab fa-telegram">Telegram</option>
+                    <option value="fab fa-facebook">Facebook</option>
+                    <option value="fab fa-instagram">Instagram</option>
+                    <option value="fab fa-twitter">Twitter</option>
+                    <option value="fab fa-youtube">YouTube</option>
+                    <option value="fab fa-tiktok">TikTok</option>
+                    <option value="fab fa-discord">Discord</option>
+                    <option value="fab fa-linkedin">LinkedIn</option>
+                    <option value="fab fa-github">GitHub</option>
+                    <option value="fas fa-globe">Website</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Color (Hex code)</label>
+                <input type="color" id="socialLinkColor" value="#4CAF50">
+            </div>
+            
+            <div class="form-group">
+                <label>Points Reward</label>
+                <input type="number" id="socialLinkPoints" value="100" min="0" step="10">
+            </div>
+            
+            <div class="form-group">
+                <label>Display Order</label>
+                <input type="number" id="socialLinkOrder" value="1" min="1">
+            </div>
+            
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="socialLinkRequired">
+                    Required for task completion
+                </label>
+            </div>
+            
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="socialLinkActive" checked>
+                    Active (Visible to users)
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Link</button>
+                <button type="button" onclick="closeSocialLinkModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+
+<!-- Users Management Tab - Enhanced -->
+<div id="usersTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-users"></i> User Management</h2>
+        <div class="header-actions">
+            <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" id="userSearch" placeholder="Search by name, email, phone..." oninput="searchUsers()">
+            </div>
+            <button onclick="exportUsersData()" class="action-btn">
+                <i class="fas fa-download"></i> Export Users
+            </button>
+            <button onclick="showBulkActionsModal()" class="action-btn">
+                <i class="fas fa-layer-group"></i> Bulk Actions
+            </button>
+        </div>
+    </div>
+    
+    <div class="users-stats-bar">
+        <div class="stat-item">
+            <span>Total Users:</span>
+            <strong id="adminTotalUsers">0</strong>
+        </div>
+        <div class="stat-item">
+            <span>Active Users:</span>
+            <strong id="adminActiveUsers">0</strong>
+        </div>
+        <div class="stat-item">
+            <span>Inactive Users:</span>
+            <strong id="adminInactiveUsers">0</strong>
+        </div>
+        <div class="stat-item">
+            <span>Total Balance:</span>
+            <strong id="adminTotalBalance">0 TZS</strong>
+        </div>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="data-table" id="usersTable">
+            <thead>
+                <tr>
+                    <th>
+                        <input type="checkbox" id="selectAllUsers" onchange="toggleSelectAllUsers()">
+                    </th>
+                    <th>User</th>
+                    <th>Contact</th>
+                    <th>Balance</th>
+                    <th>Referrals</th>
+                    <th>Packages</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="usersTableBody">
+                <tr><td colspan="9" class="no-data">Loading users...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Pagination -->
+    <div class="pagination" id="usersPagination">
+        <button onclick="loadUsersPage('prev')" class="page-btn">&laquo; Prev</button>
+        <span id="pageInfo">Page 1 of 1</span>
+        <button onclick="loadUsersPage('next')" class="page-btn">Next &raquo;</button>
+    </div>
+</div>
+            
+            <!-- Announcements Management Tab for Admin -->
+<div id="announcementsTab" class="tab-content">
+    <div class="tab-header">
+        <h2>Announcements Management</h2>
+        <button onclick="showAnnouncementForm()" class="action-btn">
+            <i class="fas fa-plus"></i> New Announcement
+        </button>
+    </div>
+    
+    <div class="announcements-admin-list">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Content</th>
+                    <th>Priority</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="adminAnnouncementsBody">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<!-- Deposits Management Tab -->
+<div id="depositsTab" class="tab-content">
+    <div class="tab-header">
+        <h2>Deposit Requests</h2>
+        <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" id="depositSearch" placeholder="Search deposits..." oninput="searchDeposits()">
+        </div>
+    </div>
+    
+    <table class="data-table" id="depositsTable">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Bank Account</th>
+                <th>Details</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="depositsTableBody">
+            <tr><td colspan="9" class="no-data"><i class="fas fa-credit-card"></i> Loading deposits...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Withdrawals Management Tab -->
+<div id="withdrawalsTab" class="tab-content">
+    <div class="tab-header">
+        <h2>Withdrawal Requests</h2>
+        <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" id="withdrawalSearch" placeholder="Search withdrawals..." oninput="searchWithdrawals()">
+        </div>
+    </div>
+    
+    <table class="data-table" id="withdrawalsTable">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Account</th>
+                <th>Funds Source</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="withdrawalsTableBody">
+            <tr><td colspan="8" class="no-data"><i class="fas fa-money-bill-wave"></i> Loading withdrawals...</td></tr>
+        </tbody>
+    </table>
+</div>
+            
+            <!-- Bank Accounts Management Tab (add this after tasksTab or before settings) -->
+<div id="bankAccountsTab" class="tab-content">
+    <div class="tab-header">
+        <h2>Bank Account Management</h2>
+        <button onclick="showAddBankAccountForm()" class="action-btn">
+            <i class="fas fa-plus"></i> Add Bank Account
+        </button>
+    </div>
+    
+    <!-- Bank Accounts List -->
+    <div class="bank-accounts-list">
+        <h3>Available Bank Accounts</h3>
+        <table class="data-table" id="bankAccountsTable">
+            <thead>
+                <tr>
+                    <th>Bank Name</th>
+                    <th>Account Number</th>
+                    <th>Account Name</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="bankAccountsBody">
+                <tr><td colspan="5" class="no-data">Loading bank accounts...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add/Edit Bank Account Modal -->
+<div id="bankAccountFormModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeBankAccountFormModal()">&times;</span>
+        <h2 id="bankAccountFormTitle">Add New Bank Account</h2>
+        <form id="bankAccountForm" onsubmit="event.preventDefault(); saveBankAccount();">
+            <input type="hidden" id="bankAccountId">
+            
+            <div class="form-group">
+                <label>Bank Name *</label>
+                <select id="bankName" required>
+                    <option value="">Select Bank</option>
+                    <option value="M-Pesa">M-Pesa</option>
+                    <option value="Airtel Money">Airtel Money</option>
+                    <option value="Tigo Pesa">Tigo Pesa</option>
+                    <option value="CRDB Bank">CRDB Bank</option>
+                    <option value="NMB Bank">NMB Bank</option>
+                    <option value="NBC Bank">NBC Bank</option>
+                    <option value="Stanbic Bank">Stanbic Bank</option>
+                    <option value="Exim Bank">Exim Bank</option>
+                    <option value="Azania Bank">Azania Bank</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Account Number *</label>
+                <input type="text" id="bankAccountNumber" placeholder="e.g., 0762XXXXXX" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Account Name *</label>
+                <input type="text" id="bankAccountName" placeholder="Full name on account" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Status</label>
+                <select id="bankAccountStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Bank Account</button>
+                <button type="button" onclick="closeBankAccountFormModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+            
+<!-- Tasks Management Tab -->
+<div id="tasksTab" class="tab-content">
+    <div class="tab-header">
+        <h2>Task Management</h2>
+        <button onclick="showAddTaskForm()" class="action-btn">
+            <i class="fas fa-plus"></i> Add New Task
+        </button>
+    </div>
+    
+    <!-- Task List -->
+    <div class="tasks-list-container">
+        <h3>Active Tasks</h3>
+        <table class="data-table" id="activeTasksTable">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Scheduled</th>
+                    <th>Expires</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="activeTasksBody">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="tasks-list-container">
+        <h3>Expired / History</h3>
+        <table class="data-table" id="expiredTasksTable">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Expired</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="expiredTasksBody">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add/Edit Task Modal (hidden by default) -->
+<div id="taskFormModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeTaskFormModal()">&times;</span>
+        <h2 id="taskFormTitle">Add New Task</h2>
+        <form id="taskForm" onsubmit="event.preventDefault(); saveTask();">
+            <input type="hidden" id="taskId">
+            
+            <div class="form-group">
+                <label>Task Title *</label>
+                <input type="text" id="taskTitle" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Description (optional)</label>
+                <textarea id="taskDescription" rows="3"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Media Type</label>
+                <select id="taskMediaType" onchange="toggleMediaInput()">
+                    <option value="image">Image</option>
+                    <option value="video">Video</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="mediaUrlGroup">
+                <label>Media URL (link to image/video)</label>
+                <input type="url" id="taskMediaUrl" placeholder="https://...">
+                <small>Or upload from gallery:</small>
+                <input type="file" id="taskMediaUpload" accept="image/*,video/*" onchange="handleMediaUpload()">
+            </div>
+            
+            <div class="form-group">
+                <label>Scheduled Date *</label>
+                <input type="date" id="taskScheduledDate" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Expiry (hours after scheduled)</label>
+                <input type="number" id="taskExpiryHours" value="24" min="1" max="168">
+                <small>Task will expire after this many hours</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Category</label>
+                <select id="taskCategory">
+                    <option value="Rating">Rating</option>
+                    <option value="Review">Review</option>
+                    <option value="Survey">Survey</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Task</button>
+                <button type="button" onclick="closeTaskFormModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+    </div>
+</div>
+
+    <!-- Super Admin Dashboard -->
+    <div id="superAdminDashboard" class="dashboard super-admin-dashboard">
+<!-- Super Admin Dashboard Header -->
+<div class="dashboard-header">
+    <div class="header-left">
+        <i class="fas fa-bars menu-toggle" onclick="toggleSidebar()"></i>
+        <h2>SmartTask Super Admin</h2>
+    </div>
+    <div class="header-right">
+        <div class="notification-icon" onclick="toggleNotifications()">
+            <i class="fas fa-bell"></i>
+            <span class="notification-badge" id="superAdminNotificationBadge">0</span>
+        </div>
+        <div class="user-profile" onclick="toggleUserMenu()">
+            <div class="user-profile-img" style="width:35px;height:35px;border-radius:50%;background:#9C27B0;color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">SA</div>
+            <span>Super Admin</span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Super Admin User Menu Dropdown - Place this right after the header -->
+<div id="superAdminUserMenu" class="user-menu">
+    <div class="user-info-header">
+        <div class="user-name" id="superAdminMenuName">Super Administrator</div>
+        <div class="user-email" id="superAdminMenuEmail">super@smarttask.com</div>
+    </div>
+    <a onclick="showSuperAdminProfile()">
+        <i class="fas fa-crown"></i>
+        <span>Profile</span>
+    </a>
+    <a onclick="showSystemSettings()">
+        <i class="fas fa-server"></i>
+        <span>System Settings</span>
+    </a>
+    <a onclick="showAuditLogs()">
+        <i class="fas fa-clipboard-list"></i>
+        <span>Audit Logs</span>
+    </a>
+    <hr>
+    <a onclick="logout()">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+    </a>
+</div>
+
+        <!-- Super Admin Sidebar -->
+        <div id="superAdminSidebar" class="sidebar">
+<div class="sidebar-header">
+    <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;margin:0 auto 10px;">
+        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png" 
+             alt="SmartTask Logo" 
+             style="width:100%;height:100%;object-fit:cover;">
+    </div>
+    <h3>Super Admin</h3>
+</div>
+<!-- Update the Super Admin Sidebar with more menu items -->
+<ul class="sidebar-menu">
+    <li class="active" onclick="switchSuperAdminTab('dashboard')">
+        <i class="fas fa-chart-pie"></i> <span>Dashboard</span>
+    </li>
+    <li onclick="switchSuperAdminTab('admins')">
+        <i class="fas fa-user-shield"></i> <span>Admin Management</span>
+    </li>
+    <li onclick="switchSuperAdminTab('allUsers')">
+        <i class="fas fa-users-cog"></i> <span>All Users</span>
+    </li>
+    <li onclick="switchSuperAdminTab('system')">
+        <i class="fas fa-server"></i> <span>System Settings</span>
+    </li>
+    <li onclick="switchSuperAdminTab('audit')">
+        <i class="fas fa-clipboard-list"></i> <span>Audit Logs</span>
+    </li>
+    <li onclick="switchSuperAdminTab('announcements')">
+        <i class="fas fa-bullhorn"></i> <span>Announcements</span>
+    </li>
+    <li onclick="switchSuperAdminTab('packages')">
+        <i class="fas fa-box"></i> <span>VIP Packages</span>
+    </li>
+    <li onclick="switchSuperAdminTab('transactions')">
+        <i class="fas fa-exchange-alt"></i> <span>All Transactions</span>
+    </li>
+    <li onclick="switchSuperAdminTab('backup')">
+        <i class="fas fa-database"></i> <span>Backup & Restore</span>
+    </li>
+    <li onclick="switchSuperAdminTab('logs')">
+        <i class="fas fa-history"></i> <span>System Logs</span>
+    </li>
+</ul>
+        </div>
+
+        <!-- Super Admin Main Content -->
+        <div class="main-content" id="superAdminMainContent">
+            <div id="superAdminDashboardTab" class="tab-content active">
+                <h2>Super Admin Overview</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <i class="fas fa-users"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Users</span>
+                            <span class="stat-value" id="superTotalUsers">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-user-tie"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Admins</span>
+                            <span class="stat-value" id="totalAdmins">1</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-coins"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Volume</span>
+                            <span class="stat-value" id="totalVolume">0 TZS</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-chart-line"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Growth</span>
+                            <span class="stat-value" id="growthRate">+12%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="system-health">
+                    <h3>System Health</h3>
+                    <div class="health-metrics">
+                        <div class="metric">
+                            <span>Server Status</span>
+                            <span class="status online">Online</span>
+                        </div>
+                        <div class="metric">
+                            <span>Database</span>
+                            <span class="status online">Connected</span>
+                        </div>
+                        <div class="metric">
+                            <span>API Response</span>
+                            <span class="status">120ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Admin Management Tab -->
+<div id="superAdminAdminsTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-user-shield"></i> Admin Management</h2>
+        <button onclick="showAddAdminForm()" class="action-btn">
+            <i class="fas fa-plus"></i> Add New Admin
+        </button>
+    </div>
+    
+    <div class="stats-row">
+        <div class="stat-mini-card">
+            <span class="stat-label">Total Admins</span>
+            <span class="stat-value" id="superTotalAdmins">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span class="stat-label">Active Admins</span>
+            <span class="stat-value" id="superActiveAdmins">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span class="stat-label">Super Admins</span>
+            <span class="stat-value" id="superSuperAdmins">1</span>
+        </div>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Admin</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </thead>
+        <tbody id="superAdminsTableBody">
+            <tr><td colspan="6" class="no-data">Loading admins...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- All Users Tab (Enhanced) -->
+<div id="superAdminAllUsersTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-users-cog"></i> All Users Management</h2>
+        <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" id="superUserSearch" placeholder="Search users..." oninput="searchSuperUsers()">
+        </div>
+    </div>
+    
+    <div class="stats-row">
+        <div class="stat-mini-card">
+            <span class="stat-label">Total Users</span>
+            <span class="stat-value" id="superTotalUsersCount">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span class="stat-label">Active Users</span>
+            <span class="stat-value" id="superActiveUsersCount">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <span class="stat-label">Total Balance</span>
+            <span class="stat-value" id="superTotalBalance">0 TZS</span>
+        </div>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Email/Phone</th>
+                <th>Balance</th>
+                <th>Referrals</th>
+                <th>Packages</th>
+                <th>Status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+            </thead>
+        <tbody id="superAllUsersTableBody">
+            <tr><td colspan="8" class="no-data">Loading users...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- System Settings Tab (Enhanced) -->
+<div id="superAdminSystemTab" class="tab-content">
+    <h2><i class="fas fa-server"></i> System Settings</h2>
+    
+    <div class="settings-sections">
+        <!-- Financial Settings -->
+        <div class="settings-section">
+            <h3>💰 Financial Settings</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Minimum Deposit (TZS)</label>
+                    <input type="number" id="sysMinDeposit" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Maximum Deposit (TZS)</label>
+                    <input type="number" id="sysMaxDeposit" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Minimum Withdrawal (TZS)</label>
+                    <input type="number" id="sysMinWithdrawal" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Maximum Withdrawal (TZS)</label>
+                    <input type="number" id="sysMaxWithdrawal" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Registration Bonus (TZS)</label>
+                    <input type="number" id="sysRegBonus" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Daily Login Bonus (TZS)</label>
+                    <input type="number" id="sysLoginBonus" class="setting-input">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Referral Settings -->
+        <div class="settings-section">
+            <h3>👥 Referral Commission Settings</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Level 1 Commission (%)</label>
+                    <input type="number" id="sysLevel1Percent" class="setting-input" step="0.5">
+                </div>
+                <div class="setting-item">
+                    <label>Level 2 Commission (%)</label>
+                    <input type="number" id="sysLevel2Percent" class="setting-input" step="0.5">
+                </div>
+                <div class="setting-item">
+                    <label>Level 3 Commission (%)</label>
+                    <input type="number" id="sysLevel3Percent" class="setting-input" step="0.5">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Task Settings -->
+        <div class="settings-section">
+            <h3>📋 Task Settings</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Tasks Per Day</label>
+                    <input type="number" id="sysTasksPerDay" class="setting-input">
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Settings -->
+        <div class="settings-section">
+            <h3>⚙️ System Settings</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Site Name</label>
+                    <input type="text" id="sysSiteName" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Support Email</label>
+                    <input type="email" id="sysSiteEmail" class="setting-input">
+                </div>
+                <div class="setting-item">
+                    <label>Support Phone</label>
+                    <input type="text" id="sysSitePhone" class="setting-input">
+                </div>
+                <div class="setting-item checkbox">
+                    <label>
+                        <input type="checkbox" id="sysMaintenanceMode">
+                        Maintenance Mode
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="settings-actions">
+            <button onclick="saveAllSystemSettings()" class="auth-btn">Save All Settings</button>
+            <button onclick="resetSystemSettings()" class="auth-btn secondary">Reset to Default</button>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Logs Tab -->
+<div id="superAdminAuditTab" class="tab-content">
+    <h2><i class="fas fa-clipboard-list"></i> Audit Logs</h2>
+    
+    <div class="audit-filters">
+        <select id="auditTypeFilter" onchange="filterAuditLogs()">
+            <option value="all">All Activities</option>
+            <option value="login">Logins</option>
+            <option value="deposit">Deposits</option>
+            <option value="withdrawal">Withdrawals</option>
+            <option value="task">Tasks</option>
+            <option value="package">Packages</option>
+            <option value="admin">Admin Actions</option>
+        </select>
+        <input type="date" id="auditDateFilter" onchange="filterAuditLogs()">
+        <button onclick="exportAuditLogs()" class="action-btn small">
+            <i class="fas fa-download"></i> Export
+        </button>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>IP Address</th>
+            </thead>
+        <tbody id="auditLogsBody">
+            <tr><td colspan="5" class="no-data">Loading audit logs...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Announcements Management Tab -->
+<div id="superAdminAnnouncementsTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-bullhorn"></i> Announcements</h2>
+        <button onclick="showAnnouncementForm()" class="action-btn">
+            <i class="fas fa-plus"></i> New Announcement
+        </button>
+    </div>
+    
+    <div class="announcements-list" id="superAnnouncementsList">
+        <p class="loading">Loading announcements...</p>
+    </div>
+</div>
+
+<!-- VIP Packages Management Tab -->
+<div id="superAdminPackagesTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-box"></i> VIP Packages Management</h2>
+        <button onclick="showAddPackageForm()" class="action-btn">
+            <i class="fas fa-plus"></i> Add Package
+        </button>
+    </div>
+    
+    <div class="packages-management-grid" id="packagesManagementGrid">
+        <!-- Packages will be populated here -->
+    </div>
+</div>
+
+<!-- All Transactions Tab -->
+<div id="superAdminTransactionsTab" class="tab-content">
+    <h2><i class="fas fa-exchange-alt"></i> All Transactions</h2>
+    
+    <div class="transaction-stats">
+        <div class="stat-mini-card">
+            <span>Total Deposits</span>
+            <span id="totalDepositsAll">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <span>Total Withdrawals</span>
+            <span id="totalWithdrawalsAll">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <span>Platform Profit</span>
+            <span id="totalProfitAll">0 TZS</span>
+        </div>
+    </div>
+    
+    <div class="transaction-tabs">
+        <button class="trans-tab active" onclick="switchTransactionTab('all')">All</button>
+        <button class="trans-tab" onclick="switchTransactionTab('deposits')">Deposits</button>
+        <button class="trans-tab" onclick="switchTransactionTab('withdrawals')">Withdrawals</button>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>User</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </thead>
+        <tbody id="allTransactionsBody">
+            <tr><td colspan="7" class="no-data">Loading transactions...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Backup & Restore Tab -->
+<div id="superAdminBackupTab" class="tab-content">
+    <h2><i class="fas fa-database"></i> Backup & Restore</h2>
+    
+    <div class="backup-section">
+        <div class="backup-card">
+            <i class="fas fa-download"></i>
+            <h3>Backup Database</h3>
+            <p>Download a complete backup of all system data</p>
+            <button onclick="createBackup()" class="auth-btn">Create Backup</button>
+        </div>
+        
+        <div class="backup-card">
+            <i class="fas fa-upload"></i>
+            <h3>Restore Database</h3>
+            <p>Restore from a previous backup file</p>
+            <input type="file" id="restoreFile" accept=".json">
+            <button onclick="restoreBackup()" class="auth-btn secondary">Restore</button>
+        </div>
+        
+        <div class="backup-card">
+            <i class="fas fa-chart-line"></i>
+            <h3>System Analytics</h3>
+            <p>View system statistics and reports</p>
+            <button onclick="generateReport()" class="auth-btn">Generate Report</button>
+        </div>
+    </div>
+    
+    <div class="backup-history">
+        <h3>Recent Backups</h3>
+        <div id="backupHistoryList">
+            <p>No backups found</p>
+        </div>
+    </div>
+</div>
+
+<!-- System Logs Tab -->
+<div id="superAdminLogsTab" class="tab-content">
+    <h2><i class="fas fa-history"></i> System Logs</h2>
+    
+    <div class="log-controls">
+        <select id="logLevelFilter" onchange="filterSystemLogs()">
+            <option value="all">All Levels</option>
+            <option value="info">Info</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+        </select>
+        <button onclick="clearSystemLogs()" class="action-btn small danger">Clear Logs</button>
+        <button onclick="refreshSystemLogs()" class="action-btn small">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+    
+    <div class="system-logs" id="systemLogsContainer">
+        <p class="loading">Loading system logs...</p>
+    </div>
+</div>
+        </div>
+    </div>
+
+    <!-- Terms and Conditions Modal -->
+    <div id="termsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Terms and Conditions</h2>
+            <div class="terms-text">
+                <h3>SmartTask Platform Terms</h3>
+                <p>1. By registering, you agree to participate in task-based earning activities.</p>
+                <p>2. Each user must complete 3 rating tasks daily to earn profits.</p>
+                <p>3. Minimum deposit is 10,000 TZS.</p>
+                <p>4. Withdrawals are processed once per day with minimum 3,000 TZS.</p>
+                <p>5. Referral commissions are withdrawable immediately.</p>
+                <p>6. We reserve the right to modify terms with notice.</p>
+                <p>7. Users must be 18 years or older.</p>
+                <p>8. Fraudulent activities will lead to account termination.</p>
+            </div>
+            <button onclick="acceptTerms()" class="auth-btn">I Accept</button>
+        </div>
+    </div>
+    
+    <!-- Advanced User Profile Modal -->
+<div id="advancedProfileModal" class="profile-modal-overlay">
+    <div class="profile-modal-container">
+        <button class="profile-modal-close" onclick="closeAdvancedProfileModal()">&times;</button>
+        
+        <div class="profile-header-section">
+            <div class="profile-avatar-wrapper">
+                <div class="profile-avatar-ring">
+                    <div class="profile-avatar-inner">
+                        <div class="profile-avatar-bg"></div>
+                        <span class="profile-avatar-text" id="profileAvatarText">U</span>
+                    </div>
+                </div>
+                <div class="profile-status-badge">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+            </div>
+            
+            <h2 class="profile-fullname" id="profileFullName">User Name</h2>
+            <p class="profile-username" id="profileUsername">@username</p>
+            <div class="profile-role-badge" id="profileRoleBadge">
+                <i class="fas fa-user"></i>
+                <span id="profileRole">User</span>
+            </div>
+        </div>
+        
+        <div class="profile-stats-grid">
+            <div class="profile-stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Balance</span>
+                    <span class="stat-value" id="profileBalance">0 TZS</span>
+                </div>
+            </div>
+            <div class="profile-stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-gift"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Referral Balance</span>
+                    <span class="stat-value" id="profileReferralBalance">0 TZS</span>
+                </div>
+            </div>
+            <div class="profile-stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Total Earned</span>
+                    <span class="stat-value" id="profileTotalEarned">0 TZS</span>
+                </div>
+            </div>
+            <div class="profile-stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-coins"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Total Invested</span>
+                    <span class="stat-value" id="profileTotalInvested">0 TZS</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="profile-details-grid">
+            <div class="profile-detail-section">
+                <h3><i class="fas fa-user-circle"></i> Personal Information</h3>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-envelope"></i> Email:</span>
+                    <span class="detail-value" id="profileEmail">user@example.com</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-phone"></i> Phone:</span>
+                    <span class="detail-value" id="profilePhone">+255 712 345 678</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-calendar"></i> Member Since:</span>
+                    <span class="detail-value" id="profileJoinDate">2024-01-01</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-clock"></i> Last Login:</span>
+                    <span class="detail-value" id="profileLastLogin">Just now</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-signal"></i> Login Count:</span>
+                    <span class="detail-value" id="profileLoginCount">1</span>
+                </div>
+            </div>
+            
+            <div class="profile-detail-section">
+                <h3><i class="fas fa-chart-simple"></i> Statistics</h3>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-users"></i> Total Referrals:</span>
+                    <span class="detail-value" id="profileReferrals">0</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-box"></i> Active Packages:</span>
+                    <span class="detail-value" id="profileActivePackages">0</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-tasks"></i> Tasks Completed:</span>
+                    <span class="detail-value" id="profileTasksCompleted">0</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-star"></i> Level 1 Referrals:</span>
+                    <span class="detail-value" id="profileLevel1Refs">0</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-star-half-alt"></i> Level 2 Referrals:</span>
+                    <span class="detail-value" id="profileLevel2Refs">0</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-star-of-life"></i> Level 3 Referrals:</span>
+                    <span class="detail-value" id="profileLevel3Refs">0</span>
+                </div>
+            </div>
+            
+            <div class="profile-detail-section">
+                <h3><i class="fas fa-gift"></i> Referral Earnings</h3>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 1 Commission:</span>
+                    <span class="detail-value profit" id="profileLevel1Comm">0 TZS</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 2 Commission:</span>
+                    <span class="detail-value profit" id="profileLevel2Comm">0 TZS</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 3 Commission:</span>
+                    <span class="detail-value profit" id="profileLevel3Comm">0 TZS</span>
+                </div>
+            </div>
+            
+            <div class="profile-detail-section">
+    <h3><i class="fas fa-code-branch"></i> Referral Link</h3>
+    <div class="referral-code-container">
+        <div class="referral-code-display" id="profileReferralCode">CODE123</div>
+        <button class="copy-code-btn" onclick="copyReferralCode()">
+            <i class="fas fa-copy"></i> Copy Code
+        </button>
+    </div>
+    <div class="referral-link-container">
+        <input type="text" id="profileReferralLink" readonly placeholder="Your referral link will appear here">
+        <button class="copy-link-btn" onclick="copyReferralLinkFromProfile()" title="Copy Link">
+            <i class="fas fa-link"></i>
+        </button>
+    </div>
+    <p class="referral-note">
+        Share your referral link to earn commissions!<br>
+        • Level 1: 10% of registration bonus<br>
+        • Level 2: 3% of registration bonus<br>
+        • Level 3: 1% of registration bonus
+    </p>
+</div>
+        </div>
+        
+        <div class="profile-actions">
+            <button class="profile-action-btn edit-profile" onclick="editProfile()">
+                <i class="fas fa-edit"></i> Edit Profile
+            </button>
+            <button class="profile-action-btn view-history" onclick="viewTransactionHistory()">
+                <i class="fas fa-history"></i> Transaction History
+            </button>
+            <button class="profile-action-btn settings" onclick="openSettings()">
+                <i class="fas fa-cog"></i> Settings
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- User Settings Modal -->
+<div id="userSettingsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserSettingsModal()">&times;</span>
+        <h2><i class="fas fa-cog"></i> Account Settings</h2>
+        
+        <div class="settings-tabs">
+<button class="settings-tab active" onclick="switchSettingsTab('profile')">
+    <i class="fas fa-user"></i> Profile
+</button>
+<button class="settings-tab" onclick="switchSettingsTab('password')">
+    <i class="fas fa-lock"></i> Password
+</button>
+<button class="settings-tab" onclick="switchSettingsTab('danger')">
+    <i class="fas fa-exclamation-triangle"></i> Danger Zone
+</button>
+        </div>
+        
+        <!-- Profile Settings Tab -->
+        <div id="profileSettingsTab" class="settings-tab-content active">
+            <form id="profileSettingsForm" onsubmit="event.preventDefault(); updateUserProfile();">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="settingsFullName" placeholder="Enter your full name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" id="settingsUsername" placeholder="Enter username" required>
+                    <small>Username must be unique and at least 3 characters</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="settingsEmail" placeholder="Enter email" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Phone Number *</label>
+                    <input type="tel" id="settingsPhone" placeholder="Enter phone number" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Profile Image URL (Optional)</label>
+                    <input type="url" id="settingsProfileImage" placeholder="https://...">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="auth-btn">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <button type="button" onclick="closeUserSettingsModal()" class="auth-btn secondary">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Password Settings Tab -->
+        <div id="passwordSettingsTab" class="settings-tab-content">
+            <form id="passwordSettingsForm" onsubmit="event.preventDefault(); changeUserPassword();">
+
+<!-- Settings Password Fields -->
+<div class="input-group">
+    <i class="fas fa-lock"></i>
+    <input type="password" id="currentPassword" placeholder="Enter current password" required>
+    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('currentPassword', this)">
+        <i class="fas fa-eye"></i>
+    </button>
+</div>
+
+<div class="input-group">
+    <i class="fas fa-lock"></i>
+    <input type="password" id="newPassword" placeholder="Enter new password (min 6 characters)" required>
+    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('newPassword', this)">
+        <i class="fas fa-eye"></i>
+    </button>
+</div>
+
+<div class="input-group">
+    <i class="fas fa-lock"></i>
+    <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required>
+    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('confirmNewPassword', this)">
+        <i class="fas fa-eye"></i>
+    </button>
+</div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="auth-btn">
+                        <i class="fas fa-key"></i> Change Password
+                    </button>
+                    <button type="button" onclick="closeUserSettingsModal()" class="auth-btn secondary">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Danger Zone Tab -->
+        <div id="dangerZoneTab" class="settings-tab-content">
+            <div class="danger-zone">
+                <div class="danger-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3>Danger Zone</h3>
+                    <p>Once you delete your account, there is no going back. Please be certain.</p>
+                </div>
+                
+                <div class="danger-actions">
+                    <div class="delete-account-section">
+                        <h4><i class="fas fa-trash-alt"></i> Delete Account</h4>
+                        <p>This action will permanently delete your account and all associated data.</p>
+                        <p><strong>What will be deleted:</strong></p>
+                        <ul>
+                            <li>Your personal information (name, email, phone)</li>
+                            <li>Transaction history</li>
+                            <li>Package purchases</li>
+                            <li>Task completions</li>
+                            <li>Referral earnings</li>
+                        </ul>
+                        <div class="delete-confirmation">
+                            <label>
+                                <input type="checkbox" id="confirmDeleteCheckbox">
+                                I understand that this action cannot be undone
+                            </label>
+                        </div>
+                        <button class="delete-account-btn" onclick="deleteUserAccount()" id="deleteAccountBtn" disabled>
+                            <i class="fas fa-trash-alt"></i> Delete My Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay for Settings -->
+<div id="settingsLoadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="spinner"></div>
+    <p class="loading-message">Processing...</p>
+</div>
+
+
+<!-- User Payment Methods Modal -->
+<div id="userPaymentMethodsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closePaymentMethodsModal()">&times;</span>
+        <h2><i class="fas fa-credit-card"></i> My weekly commission</h2>
+        <!-- Commission Info will be dynamically added here -->
+        <!-- Add New Card Tab -->
+        <div id="addCardTab" class="payment-tab-content">
+            <!-- Add card form here -->
+        </div>
+    </div>
+</div>
+
+<!-- User Details Modal -->
+<div id="userDetailsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-circle"></i> User Details</h2>
+        <div id="userDetailsContent">
+            <div class="loading">Loading user details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditUserModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit User</h2>
+        <form id="editUserForm" onsubmit="event.preventDefault(); saveUserEdits();">
+            <input type="hidden" id="editUserId">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="editFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="editUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="editEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="editPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Balance (TZS)</label>
+                <input type="number" id="editBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Referral Balance (TZS)</label>
+                <input type="number" id="editReferralBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Verification Status</label>
+                <select id="editVerified">
+                    <option value="true">Verified</option>
+                    <option value="false">Not Verified</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditUserModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddBalanceModal()">&times;</span>
+        <h2><i class="fas fa-plus-circle"></i> Add Balance</h2>
+        <form id="addBalanceForm" onsubmit="event.preventDefault(); processAddBalance();">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="balanceUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Balance</label>
+                <input type="text" id="balanceCurrentBalance" readonly>
+            </div>
+            <div class="form-group">
+                <label>Amount to Add (TZS)</label>
+                <input type="number" id="balanceAmount" required min="1" step="100">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="balanceReason" placeholder="e.g., Bonus, Correction, Promotion">
+            </div>
+            <div class="form-group">
+                <label>Add to</label>
+                <select id="balanceType">
+                    <option value="main">Main Balance</option>
+                    <option value="referral">Referral Balance</option>
+                    <option value="both">Both (Split equally)</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Add Balance</button>
+                <button type="button" onclick="closeAddBalanceModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Transaction Details Modal -->
+<div id="transactionDetailsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeTransactionDetailsModal()">&times;</span>
+        <h2><i class="fas fa-receipt"></i> Transaction Details</h2>
+        <div id="transactionDetailsContent">
+            <div class="loading">Loading transaction details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Package Edit Modal -->
+<div id="editPackageModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditPackageModal()">&times;</span>
+        <h2><i class="fas fa-box"></i> Edit Package</h2>
+        <form id="editPackageForm" onsubmit="event.preventDefault(); savePackageEdits();">
+            <input type="hidden" id="editPackageLevel">
+            <div class="form-group">
+                <label>Package Name</label>
+                <input type="text" id="editPackageName" required>
+            </div>
+            <div class="form-group">
+                <label>Investment (TZS)</label>
+                <input type="number" id="editPackageInvestment" required>
+            </div>
+            <div class="form-group">
+                <label>Daily Profit (TZS)</label>
+                <input type="number" id="editPackageDailyProfit" required>
+            </div>
+            <div class="form-group">
+                <label>Percentage (%)</label>
+                <input type="number" id="editPackagePercentage" step="0.5" required>
+            </div>
+            <div class="form-group">
+                <label>Tasks Per Day</label>
+                <input type="number" id="editPackageTasks" required>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <input type="color" id="editPackageColor">
+            </div>
+            <div class="form-group">
+                <label>Icon</label>
+                <select id="editPackageIcon">
+                    <option value="fa-seedling">🌱 Seedling</option>
+                    <option value="fa-leaf">🍃 Leaf</option>
+                    <option value="fa-star-half-alt">⭐ Star Half</option>
+                    <option value="fa-star">⭐ Star</option>
+                    <option value="fa-gem">💎 Gem</option>
+                    <option value="fa-crown">👑 Crown</option>
+                    <option value="fa-rocket">🚀 Rocket</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditPackageModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- System Settings Modal -->
+<div id="systemSettingsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeSystemSettingsModal()">&times;</span>
+        <h2><i class="fas fa-cog"></i> System Settings</h2>
+        <div class="settings-tabs">
+            <button class="settings-tab-btn active" onclick="switchSettingsTab('financial')">Financial</button>
+            <button class="settings-tab-btn" onclick="switchSettingsTab('referral')">Referral</button>
+            <button class="settings-tab-btn" onclick="switchSettingsTab('tasks')">Tasks</button>
+            <button class="settings-tab-btn" onclick="switchSettingsTab('system')">System</button>
+        </div>
+        <div id="financialSettingsTab" class="settings-tab-content active">
+            <div class="form-group">
+                <label>Minimum Deposit (TZS)</label>
+                <input type="number" id="modalMinDeposit" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Maximum Deposit (TZS)</label>
+                <input type="number" id="modalMaxDeposit" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Minimum Withdrawal (TZS)</label>
+                <input type="number" id="modalMinWithdrawal" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Maximum Withdrawal (TZS)</label>
+                <input type="number" id="modalMaxWithdrawal" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Registration Bonus (TZS)</label>
+                <input type="number" id="modalRegBonus" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Daily Login Bonus (TZS)</label>
+                <input type="number" id="modalLoginBonus" class="setting-input">
+            </div>
+        </div>
+        <div id="referralSettingsTab" class="settings-tab-content">
+            <div class="form-group">
+                <label>Level 1 Commission (%)</label>
+                <input type="number" id="modalLevel1Percent" step="0.5" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Level 2 Commission (%)</label>
+                <input type="number" id="modalLevel2Percent" step="0.5" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Level 3 Commission (%)</label>
+                <input type="number" id="modalLevel3Percent" step="0.5" class="setting-input">
+            </div>
+        </div>
+        <div id="tasksSettingsTab" class="settings-tab-content">
+            <div class="form-group">
+                <label>Tasks Per Day</label>
+                <input type="number" id="modalTasksPerDay" class="setting-input">
+            </div>
+        </div>
+        <div id="systemSettingsTab" class="settings-tab-content">
+            <div class="form-group">
+                <label>Site Name</label>
+                <input type="text" id="modalSiteName" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Support Email</label>
+                <input type="email" id="modalSiteEmail" class="setting-input">
+            </div>
+            <div class="form-group">
+                <label>Support Phone</label>
+                <input type="text" id="modalSitePhone" class="setting-input">
+            </div>
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="modalMaintenanceMode">
+                    Maintenance Mode
+                </label>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button onclick="saveModalSettings()" class="auth-btn">Save All Settings</button>
+            <button onclick="closeSystemSettingsModal()" class="auth-btn secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Announcement Details Modal -->
+<div id="announcementDetailsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAnnouncementDetailsModal()">&times;</span>
+        <h2><i class="fas fa-bullhorn"></i> Announcement Details</h2>
+        <div id="announcementDetailsContent">
+            <div class="loading">Loading announcement...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Announcement Modal -->
+<div id="editAnnouncementModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditAnnouncementModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit Announcement</h2>
+        <form id="editAnnouncementForm" onsubmit="event.preventDefault(); saveAnnouncementEdits();">
+            <input type="hidden" id="editAnnouncementId">
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" id="editAnnouncementTitle" required>
+            </div>
+            <div class="form-group">
+                <label>Content</label>
+                <textarea id="editAnnouncementContent" rows="5" required></textarea>
+            </div>
+            <div class="form-group">
+                <label>Priority</label>
+                <select id="editAnnouncementPriority">
+                    <option value="normal">Normal</option>
+                    <option value="important">Important</option>
+                    <option value="urgent">Urgent</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Expiry Date (Optional)</label>
+                <input type="date" id="editAnnouncementExpiry">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditAnnouncementModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Admin Details Modal -->
+<div id="adminDetailsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAdminDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-shield"></i> Admin Details</h2>
+        <div id="adminDetailsContent">
+            <div class="loading">Loading admin details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Admin Modal -->
+<div id="editAdminModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditAdminModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit Admin</h2>
+        <form id="editAdminForm" onsubmit="event.preventDefault(); saveAdminEdits();">
+            <input type="hidden" id="editAdminId">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="editAdminFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="editAdminUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="editAdminEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="editAdminPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="editAdminRole">
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Super Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editAdminStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditAdminModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- User Password Modal -->
+<div id="userPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeUserPasswordModal()">&times;</span>
+        <h2><i class="fas fa-key"></i> User Password Management</h2>
+        <div id="userPasswordContent">
+            <div class="loading">Loading user information...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div id="resetPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeResetPasswordModal()">&times;</span>
+        <h2><i class="fas fa-sync-alt"></i> Reset User Password</h2>
+        <form id="resetPasswordForm" onsubmit="event.preventDefault(); resetUserPassword();">
+            <input type="hidden" id="resetUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="resetUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="text" id="resetNewPassword" required>
+                <small>Leave empty to generate random password</small>
+            </div>
+            <div class="form-group">
+                <label>Confirm Password</label>
+                <input type="text" id="resetConfirmPassword">
+            </div>
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="sendEmailNotification" checked>
+                    Send password via email to user
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Reset Password</button>
+                <button type="button" onclick="closeResetPasswordModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Password Modal (for admin viewing only) -->
+<div id="viewPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeViewPasswordModal()">&times;</span>
+        <h2><i class="fas fa-eye"></i> User Password</h2>
+        <div id="viewPasswordContent">
+            <div class="loading">Loading...</div>
+        </div>
+        <div class="form-actions">
+            <button onclick="closeViewPasswordModal()" class="auth-btn">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- User Details Modal -->
+<div id="userDetailsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-circle"></i> User Details</h2>
+        <div id="userDetailsContent" class="user-details-container">
+            <div class="loading">Loading user details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditUserModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit User</h2>
+        <form id="editUserForm" onsubmit="event.preventDefault(); saveUserEdits();">
+            <input type="hidden" id="editUserId">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="editFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="editUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="editEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="editPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Balance (TZS)</label>
+                <input type="number" id="editBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Referral Balance (TZS)</label>
+                <input type="number" id="editReferralBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Verification Status</label>
+                <select id="editVerified">
+                    <option value="true">Verified</option>
+                    <option value="false">Not Verified</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditUserModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddBalanceModal()">&times;</span>
+        <h2><i class="fas fa-plus-circle"></i> Add Balance</h2>
+        <form id="addBalanceForm" onsubmit="event.preventDefault(); processAddBalance();">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="balanceUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Balance</label>
+                <input type="text" id="balanceCurrentBalance" readonly>
+            </div>
+            <div class="form-group">
+                <label>Amount to Add (TZS)</label>
+                <input type="number" id="balanceAmount" required min="1" step="100">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="balanceReason" placeholder="e.g., Bonus, Correction, Promotion">
+            </div>
+            <div class="form-group">
+                <label>Add to</label>
+                <select id="balanceType">
+                    <option value="main">Main Balance</option>
+                    <option value="referral">Referral Balance</option>
+                    <option value="both">Both (Split equally)</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Add Balance</button>
+                <button type="button" onclick="closeAddBalanceModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Password Management Modal -->
+<div id="userPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeUserPasswordModal()">&times;</span>
+        <h2><i class="fas fa-key"></i> Password Management</h2>
+        <div id="userPasswordContent"></div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div id="resetPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeResetPasswordModal()">&times;</span>
+        <h2><i class="fas fa-sync-alt"></i> Reset Password</h2>
+        <form id="resetPasswordForm" onsubmit="event.preventDefault(); resetUserPassword();">
+            <input type="hidden" id="resetUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="resetUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="text" id="resetNewPassword">
+                <small>Leave empty to generate random password</small>
+            </div>
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="sendEmailNotification" checked>
+                    Send password via email to user
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Reset Password</button>
+                <button type="button" onclick="closeResetPasswordModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Password Modal -->
+<div id="viewPasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeViewPasswordModal()">&times;</span>
+        <h2><i class="fas fa-eye"></i> User Password</h2>
+        <div id="viewPasswordContent"></div>
+        <div class="form-actions">
+            <button onclick="closeViewPasswordModal()" class="auth-btn">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Actions Modal -->
+<div id="bulkActionsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeBulkActionsModal()">&times;</span>
+        <h2><i class="fas fa-layer-group"></i> Bulk Actions</h2>
+        <div class="bulk-actions">
+            <p>Selected Users: <span id="selectedCount">0</span></p>
+            <div class="action-buttons">
+                <button onclick="bulkActivateUsers()" class="action-btn success">
+                    <i class="fas fa-check-circle"></i> Activate Selected
+                </button>
+                <button onclick="bulkDeactivateUsers()" class="action-btn warning">
+                    <i class="fas fa-ban"></i> Deactivate Selected
+                </button>
+                <button onclick="bulkAddBonus()" class="action-btn info">
+                    <i class="fas fa-gift"></i> Add Bonus to Selected
+                </button>
+                <button onclick="bulkSendNotification()" class="action-btn primary">
+                    <i class="fas fa-bell"></i> Send Notification
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Transactions Modal -->
+<div id="userTransactionsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserTransactionsModal()">&times;</span>
+        <h2><i class="fas fa-history"></i> User Transactions</h2>
+        <div id="userTransactionsContent"></div>
+    </div>
+</div>
+
+<!-- User Details Modal -->
+<div id="userDetailsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-circle"></i> User Details</h2>
+        <div id="userDetailsContent" class="user-details-container">
+            <div class="loading">Loading user details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditUserModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit User</h2>
+        <form id="editUserForm" onsubmit="event.preventDefault(); saveUserEdits();">
+            <input type="hidden" id="editUserId">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="editFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="editUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="editEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="editPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Balance (TZS)</label>
+                <input type="number" id="editBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Referral Balance (TZS)</label>
+                <input type="number" id="editReferralBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Verification Status</label>
+                <select id="editVerified">
+                    <option value="true">Verified</option>
+                    <option value="false">Not Verified</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditUserModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddBalanceModal()">&times;</span>
+        <h2><i class="fas fa-plus-circle"></i> Add Balance</h2>
+        <form id="addBalanceForm" onsubmit="event.preventDefault(); processAddBalance();">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="balanceUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Balance</label>
+                <input type="text" id="balanceCurrentBalance" readonly>
+            </div>
+            <div class="form-group">
+                <label>Amount to Add (TZS)</label>
+                <input type="number" id="balanceAmount" required min="1" step="100">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="balanceReason" placeholder="e.g., Bonus, Correction, Promotion">
+            </div>
+            <div class="form-group">
+                <label>Add to</label>
+                <select id="balanceType">
+                    <option value="main">Main Balance</option>
+                    <option value="referral">Referral Balance</option>
+                    <option value="both">Both (Split equally)</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Add Balance</button>
+                <button type="button" onclick="closeAddBalanceModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- User Transactions Modal -->
+<div id="userTransactionsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserTransactionsModal()">&times;</span>
+        <h2><i class="fas fa-history"></i> User Transactions</h2>
+        <div id="userTransactionsContent"></div>
+    </div>
+</div>
+
+<!-- User Bank Accounts Modal -->
+<div id="userBankAccountsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserBankAccountsModal()">&times;</span>
+        <h2><i class="fas fa-university"></i> My Bank Accounts</h2>
+        
+        <!-- Tabs for Saved Accounts and Add New -->
+        <div class="bank-accounts-tabs">
+            <button class="bank-tab-btn active" onclick="switchBankAccountsTab('saved')">
+                <i class="fas fa-list"></i> My Accounts
+            </button>
+            <button class="bank-tab-btn" onclick="switchBankAccountsTab('add')">
+                <i class="fas fa-plus-circle"></i> Add New Account
+            </button>
+        </div>
+        
+        <!-- Saved Accounts Tab -->
+        <div id="savedBankAccountsTab" class="bank-tab-content active">
+            <div class="saved-accounts-list" id="savedBankAccountsList">
+                <!-- Accounts will be populated here -->
+                <div class="loading-accounts">
+                    <i class="fas fa-spinner fa-spin"></i> Loading your accounts...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add New Account Tab -->
+        <div id="addBankAccountTab" class="bank-tab-content">
+            <div class="add-account-form-container">
+                <h3><i class="fas fa-plus-circle"></i> Add New Bank Account</h3>
+                <p class="form-note">Add your bank account details for withdrawals</p>
+                
+                <form id="addBankAccountForm" onsubmit="event.preventDefault(); saveUserBankAccount();">
+                    <div class="form-group">
+                        <label>Bank Name *</label>
+                        <select id="userBankName" required onchange="toggleUserOtherBankField()">
+                            <option value="">Select Bank</option>
+                            <option value="M-Pesa">M-Pesa</option>
+                            <option value="Airtel Money">Airtel Money</option>
+                            <option value="Tigo Pesa">Tigo Pesa</option>
+                            <option value="CRDB Bank">CRDB Bank</option>
+                            <option value="NMB Bank">NMB Bank</option>
+                            <option value="NBC Bank">NBC Bank</option>
+                            <option value="Stanbic Bank">Stanbic Bank</option>
+                            <option value="Exim Bank">Exim Bank</option>
+                            <option value="Azania Bank">Azania Bank</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group other-bank-field" id="userOtherBankField" style="display: none;">
+                        <label>Bank Name (if Other) *</label>
+                        <input type="text" id="userOtherBankName" placeholder="Enter your bank name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Account Number *</label>
+                        <input type="text" id="userAccountNumber" placeholder="e.g., 0712345678 or account number" required>
+                        <small class="hint">Enter your mobile money number or bank account number</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Account Holder Name *</label>
+                        <input type="text" id="userAccountHolderName" placeholder="Full name on account" required>
+                    </div>
+                    
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="setAsDefaultAccount">
+                            <span class="checkmark"></span>
+                            Set as default account for withdrawals
+                        </label>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="auth-btn">
+                            <i class="fas fa-save"></i> Save Account
+                        </button>
+                        <button type="button" onclick="resetBankAccountForm()" class="auth-btn secondary">
+                            <i class="fas fa-undo"></i> Reset
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Info Section -->
+        <div class="bank-accounts-info">
+            <div class="info-card">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    <strong>Important:</strong>
+                    <p>Your bank accounts will be used for withdrawals. Make sure all details are correct.</p>
+                    <p>You can add up to 5 bank accounts. The first account added will be set as default.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Payment Methods Modal -->
+<div id="userPaymentMethodsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closePaymentMethodsModal()">&times;</span>
+        <h2><i class="fas fa-credit-card"></i> My Payment Methods</h2>
+        
+        <div class="payment-methods-tabs">
+            <button class="tab-btn active" onclick="switchPaymentTab('saved')">Saved Cards</button>
+            <button class="tab-btn" onclick="switchPaymentTab('add')">Add New Card</button>
+        </div>
+        
+        <!-- Saved Cards Tab -->
+        <div id="savedCardsTab" class="payment-tab-content active">
+            <div class="saved-cards-list" id="savedCardsList">
+                <!-- Cards will be populated here -->
+                <p class="loading">Loading your cards...</p>
+            </div>
+        </div>
+        
+        <!-- Add New Card Tab -->
+        <div id="addCardTab" class="payment-tab-content">
+            <form id="addCardForm" onsubmit="event.preventDefault(); saveUserPaymentMethod();">
+                <div class="form-group">
+                    <label>Payment Method *</label>
+                    <select id="userPaymentType" required onchange="toggleUserPaymentFields()">
+                        <option value="">Select Method</option>
+                        <option value="M-Pesa">M-Pesa</option>
+                        <option value="Airtel Money">Airtel Money</option>
+                        <option value="Tigo Pesa">Tigo Pesa</option>
+                        <option value="CRDB Bank">CRDB Bank</option>
+                        <option value="NMB Bank">NMB Bank</option>
+                        <option value="NBC Bank">NBC Bank</option>
+                        <option value="Other Bank">Other Bank</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Account/Phone Number *</label>
+                    <input type="text" id="userAccountNumber" placeholder="e.g., 0712345678" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Account Holder Name *</label>
+                    <input type="text" id="userAccountName" placeholder="Full name on account" required>
+                </div>
+                
+                <div class="form-group other-bank-field" style="display: none;">
+                    <label>Bank Name (if Other)</label>
+                    <input type="text" id="userOtherBankName" placeholder="Enter bank name">
+                </div>
+                
+                <div class="form-group">
+                    <label>Set as Default</label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="setAsDefault">
+                        <span class="checkmark"></span>
+                        Use as default payment method
+                    </label>
+                </div>
+                
+                <button type="submit" class="auth-btn">Save Payment Method</button>
+            </form>
+        </div>
+    </div>
+</div>
+    <!-- Firebase Initialization -->
+
+    <script src="main.js"></script>
+</body>
+</html>
