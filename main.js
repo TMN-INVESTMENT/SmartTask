@@ -5892,6 +5892,7 @@ function switchUserTab(tabName) {
     }
 }
     
+// Update switchAdminTab function to include social links
 function switchAdminTab(tabName) {
     console.log('Switching to admin tab:', tabName);
     
@@ -5913,51 +5914,43 @@ function switchAdminTab(tabName) {
     // Show selected tab
     if (tabName === 'dashboard') {
         const adminDashboardTab = document.getElementById('adminDashboardTab');
-        if (adminDashboardTab) {
-            adminDashboardTab.classList.add('active');
-            loadAdminData();
-        }
+        if (adminDashboardTab) adminDashboardTab.classList.add('active');
+        loadAdminData();
     } else if (tabName === 'deposits') {
         const depositsTab = document.getElementById('depositsTab');
-        if (depositsTab) {
-            depositsTab.classList.add('active');
-            // Force reload deposits
-            loadDeposits().then(() => {
-                loadDepositsTable();
-            });
-        }
+        if (depositsTab) depositsTab.classList.add('active');
+        loadDeposits().then(() => loadDepositsTable());
     } else if (tabName === 'withdrawals') {
         const withdrawalsTab = document.getElementById('withdrawalsTab');
-        if (withdrawalsTab) {
-            withdrawalsTab.classList.add('active');
-            // Force reload withdrawals
-            loadWithdrawals().then(() => {
-                loadWithdrawalsTable();
-            });
-        }
+        if (withdrawalsTab) withdrawalsTab.classList.add('active');
+        loadWithdrawals().then(() => loadWithdrawalsTable());
     } else if (tabName === 'users') {
         const usersTab = document.getElementById('usersTab');
-        if (usersTab) {
-            usersTab.classList.add('active');
-            loadUsersTable();
-        }
+        if (usersTab) usersTab.classList.add('active');
+        loadUsersTable();
     } else if (tabName === 'tasks') {
         const tasksTab = document.getElementById('tasksTab');
-        if (tasksTab) {
-            tasksTab.classList.add('active');
-            loadAdminTasks();
-        }
+        if (tasksTab) tasksTab.classList.add('active');
+        loadAdminTasks();
     } else if (tabName === 'bankAccounts') {
         const bankAccountsTab = document.getElementById('bankAccountsTab');
-        if (bankAccountsTab) {
-            bankAccountsTab.classList.add('active');
-            loadBankAccounts();
-        }
+        if (bankAccountsTab) bankAccountsTab.classList.add('active');
+        loadBankAccounts();
+    } else if (tabName === 'socialLinks') {
+        // Handle social links tab
+        openAdminSocialLinksModal();
+    } else if (tabName === 'announcements') {
+        const announcementsTab = document.getElementById('announcementsTab');
+        if (announcementsTab) announcementsTab.classList.add('active');
+        loadAdminAnnouncements();
+    } else if (tabName === 'settings') {
+        const settingsTab = document.getElementById('settingsTab');
+        if (settingsTab) settingsTab.classList.add('active');
     } else {
         const targetTab = document.getElementById(tabName + 'Tab');
         if (targetTab) targetTab.classList.add('active');
     }
-}   
+}
 
 function switchSuperAdminTab(tabName) {
     document.querySelectorAll('#superAdminSidebar .sidebar-menu li').forEach(li => {
@@ -23911,3 +23904,644 @@ function getSocialLoginStatus() {
         hasGithub: currentUser.socialProvider === 'github'
     };
 }
+
+// ============================================
+// AUTO CLOSE SIDEBAR ON NAVIGATION SELECTION
+// ============================================
+
+/**
+ * Initialize auto-close sidebar for admin and super admin dashboards
+ */
+function initAutoCloseSidebar() {
+    // Get all sidebar menu items for admin dashboard
+    const adminSidebarItems = document.querySelectorAll('#adminSidebar .sidebar-menu li');
+    const superAdminSidebarItems = document.querySelectorAll('#superAdminSidebar .sidebar-menu li');
+    
+    // Function to close sidebar if screen is mobile/tablet
+    function closeSidebarIfMobile() {
+        const isMobile = window.innerWidth < 768;
+        if (isMobile) {
+            const adminSidebar = document.getElementById('adminSidebar');
+            const superAdminSidebar = document.getElementById('superAdminSidebar');
+            
+            if (adminSidebar && adminSidebar.classList.contains('active')) {
+                adminSidebar.classList.remove('active');
+            }
+            if (superAdminSidebar && superAdminSidebar.classList.contains('active')) {
+                superAdminSidebar.classList.remove('active');
+            }
+            
+            // Also remove shifted class from main content
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.remove('shifted');
+            }
+        }
+    }
+    
+    // Add click event listeners to admin sidebar items
+    adminSidebarItems.forEach(item => {
+        item.removeEventListener('click', closeSidebarIfMobile);
+        item.addEventListener('click', closeSidebarIfMobile);
+    });
+    
+    // Add click event listeners to super admin sidebar items
+    superAdminSidebarItems.forEach(item => {
+        item.removeEventListener('click', closeSidebarIfMobile);
+        item.addEventListener('click', closeSidebarIfMobile);
+    });
+    
+    // Also handle the menu toggle button - ensure it works properly
+    const menuToggle = document.querySelector('.menu-toggle');
+    if (menuToggle) {
+        menuToggle.removeEventListener('click', handleMenuToggle);
+        menuToggle.addEventListener('click', handleMenuToggle);
+    }
+    
+    // Handle window resize - close sidebar when switching to mobile
+    window.removeEventListener('resize', handleWindowResize);
+    window.addEventListener('resize', handleWindowResize);
+    
+    console.log('Auto-close sidebar initialized for admin and super admin');
+}
+
+/**
+ * Handle menu toggle button click
+ */
+function handleMenuToggle(event) {
+    event.stopPropagation();
+    
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return;
+    
+    // Determine which dashboard is active
+    const adminDashboard = document.getElementById('adminDashboard');
+    const superAdminDashboard = document.getElementById('superAdminDashboard');
+    
+    if (adminDashboard && adminDashboard.classList.contains('active')) {
+        const adminSidebar = document.getElementById('adminSidebar');
+        if (adminSidebar) {
+            adminSidebar.classList.toggle('active');
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.toggle('shifted');
+            }
+        }
+    } else if (superAdminDashboard && superAdminDashboard.classList.contains('active')) {
+        const superAdminSidebar = document.getElementById('superAdminSidebar');
+        if (superAdminSidebar) {
+            superAdminSidebar.classList.toggle('active');
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.toggle('shifted');
+            }
+        }
+    }
+}
+
+/**
+ * Handle window resize - close sidebar when switching to mobile view
+ */
+function handleWindowResize() {
+    const wasMobile = window.innerWidth < 768;
+    const isNowMobile = window.innerWidth < 768;
+    
+    // If we switched to mobile view, close the sidebar
+    if (!wasMobile && isNowMobile) {
+        const adminSidebar = document.getElementById('adminSidebar');
+        const superAdminSidebar = document.getElementById('superAdminSidebar');
+        const mainContent = document.querySelector('.main-content');
+        
+        if (adminSidebar && adminSidebar.classList.contains('active')) {
+            adminSidebar.classList.remove('active');
+            if (mainContent) mainContent.classList.remove('shifted');
+        }
+        if (superAdminSidebar && superAdminSidebar.classList.contains('active')) {
+            superAdminSidebar.classList.remove('active');
+            if (mainContent) mainContent.classList.remove('shifted');
+        }
+    }
+    
+    // If we switched to desktop view, ensure sidebar is visible (if it should be)
+    if (wasMobile && !isNowMobile) {
+        // On desktop, sidebar is always visible by default (no active class needed for visibility)
+        // Just ensure main content has the shifted class
+        const adminDashboard = document.getElementById('adminDashboard');
+        const superAdminDashboard = document.getElementById('superAdminDashboard');
+        const mainContent = document.querySelector('.main-content');
+        
+        if ((adminDashboard && adminDashboard.classList.contains('active')) ||
+            (superAdminDashboard && superAdminDashboard.classList.contains('active'))) {
+            if (mainContent) mainContent.classList.add('shifted');
+        }
+    }
+}
+
+/**
+ * Enhanced version - close sidebar on any navigation within dashboard
+ */
+function initEnhancedAutoCloseSidebar() {
+    // Close sidebar when clicking ANY link or button that causes navigation
+    const closeOnNavigation = () => {
+        const isMobile = window.innerWidth < 768;
+        if (isMobile) {
+            setTimeout(() => {
+                const adminSidebar = document.getElementById('adminSidebar');
+                const superAdminSidebar = document.getElementById('superAdminSidebar');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (adminSidebar && adminSidebar.classList.contains('active')) {
+                    adminSidebar.classList.remove('active');
+                    if (mainContent) mainContent.classList.remove('shifted');
+                }
+                if (superAdminSidebar && superAdminSidebar.classList.contains('active')) {
+                    superAdminSidebar.classList.remove('active');
+                    if (mainContent) mainContent.classList.remove('shifted');
+                }
+            }, 150); // Small delay to allow navigation to complete
+        }
+    };
+    
+    // Monitor clicks on sidebar menu items
+    const adminMenuItems = document.querySelectorAll('#adminSidebar .sidebar-menu li');
+    const superAdminMenuItems = document.querySelectorAll('#superAdminSidebar .sidebar-menu li');
+    
+    adminMenuItems.forEach(item => {
+        item.removeEventListener('click', closeOnNavigation);
+        item.addEventListener('click', closeOnNavigation);
+    });
+    
+    superAdminMenuItems.forEach(item => {
+        item.removeEventListener('click', closeOnNavigation);
+        item.addEventListener('click', closeOnNavigation);
+    });
+    
+    // Also monitor for tab switching functions
+    const originalSwitchAdminTab = window.switchAdminTab;
+    if (originalSwitchAdminTab) {
+        window.switchAdminTab = function(tabName) {
+            originalSwitchAdminTab(tabName);
+            closeOnNavigation();
+        };
+    }
+    
+    const originalSwitchSuperAdminTab = window.switchSuperAdminTab;
+    if (originalSwitchSuperAdminTab) {
+        window.switchSuperAdminTab = function(tabName) {
+            originalSwitchSuperAdminTab(tabName);
+            closeOnNavigation();
+        };
+    }
+}
+
+// ============================================
+// OVERRIDE EXISTING TOGGLE SIDEBAR FUNCTION
+// ============================================
+
+// Store original function if it exists
+const originalToggleSidebar = window.toggleSidebar;
+
+// Enhanced toggle sidebar function
+window.toggleSidebar = function() {
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return;
+    
+    const adminDashboard = document.getElementById('adminDashboard');
+    const superAdminDashboard = document.getElementById('superAdminDashboard');
+    const userDashboard = document.getElementById('userDashboard');
+    
+    if (adminDashboard && adminDashboard.classList.contains('active')) {
+        const adminSidebar = document.getElementById('adminSidebar');
+        if (adminSidebar) {
+            adminSidebar.classList.toggle('active');
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.toggle('shifted');
+            }
+        }
+    } else if (superAdminDashboard && superAdminDashboard.classList.contains('active')) {
+        const superAdminSidebar = document.getElementById('superAdminSidebar');
+        if (superAdminSidebar) {
+            superAdminSidebar.classList.toggle('active');
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+                mainContent.classList.toggle('shifted');
+            }
+        }
+    } else if (userDashboard && userDashboard.classList.contains('active')) {
+        if (originalToggleSidebar) {
+            originalToggleSidebar();
+        }
+    }
+};
+
+// ============================================
+// INITIALIZE AUTO-CLOSE ON PAGE LOAD
+// ============================================
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        initAutoCloseSidebar();
+        initEnhancedAutoCloseSidebar();
+    }, 500);
+});
+
+// Also initialize when admin/super admin dashboards are shown
+window.showAdminDashboard = function() {
+    if (originalShowAdminDashboard) originalShowAdminDashboard();
+    setTimeout(() => {
+        initAutoCloseSidebar();
+        initEnhancedAutoCloseSidebar();
+    }, 200);
+};
+
+
+window.showSuperAdminDashboard = function() {
+    if (originalShowSuperAdminDashboard) originalShowSuperAdminDashboard();
+    setTimeout(() => {
+        initAutoCloseSidebar();
+        initEnhancedAutoCloseSidebar();
+    }, 200);
+};
+
+// ============================================
+// ADMIN SOCIAL LINKS MANAGEMENT - FIXED
+// ============================================
+
+let adminSocialLinks = [];
+
+/**
+ * Open admin social links modal
+ */
+async function openAdminSocialLinksModal() {
+    console.log('Opening admin social links modal...');
+    
+    // Load social links from Firestore
+    await loadAdminSocialLinksData();
+    
+    // Show modal
+    const modal = document.getElementById('adminSocialLinksModal');
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    } else {
+        console.error('adminSocialLinksModal not found');
+        showToast('Modal not found. Please refresh the page.', 'error');
+    }
+}
+
+/**
+ * Close admin social links modal
+ */
+function closeAdminSocialLinksModal() {
+    const modal = document.getElementById('adminSocialLinksModal');
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Load admin social links data from Firestore
+ */
+async function loadAdminSocialLinksData() {
+    console.log('Loading admin social links data...');
+    
+    try {
+        const doc = await db.collection('settings').doc('socialLinks').get();
+        
+        if (doc.exists && doc.data().links && Array.isArray(doc.data().links)) {
+            adminSocialLinks = doc.data().links.filter(link => link && link.id);
+        } else {
+            adminSocialLinks = [];
+        }
+        
+        // Sort by order
+        adminSocialLinks.sort((a, b) => (a.order || 999) - (b.order || 999));
+        
+        renderAdminSocialLinksGrid();
+        updateAdminSocialLinksStats();
+        
+        console.log(`Loaded ${adminSocialLinks.length} social links`);
+        
+    } catch (error) {
+        console.error('Error loading social links:', error);
+        adminSocialLinks = [];
+        renderAdminSocialLinksGrid();
+        showToast('Error loading social links', 'error');
+    }
+}
+
+/**
+ * Render admin social links grid
+ */
+function renderAdminSocialLinksGrid() {
+    const container = document.getElementById('adminSocialLinksGrid');
+    if (!container) return;
+    
+    if (adminSocialLinks.length === 0) {
+        container.innerHTML = `
+            <div class="no-data" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                <i class="fas fa-share-alt" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
+                <p>No social links configured</p>
+                <button onclick="showAddSocialLinkFormAdmin()" class="auth-btn" style="margin-top: 10px;">
+                    <i class="fas fa-plus"></i> Add Your First Link
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    adminSocialLinks.forEach(link => {
+        const statusClass = link.isActive ? 'success' : 'danger';
+        const statusText = link.isActive ? 'Active' : 'Inactive';
+        const requiredBadge = link.isRequired ? 
+            '<span class="badge warning" style="background: #FF9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">Required</span>' : 
+            '<span class="badge info" style="background: #9E9E9E; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">Optional</span>';
+        
+        html += `
+            <div class="social-link-card" style="background: white; border-radius: 12px; padding: 15px; border: 1px solid #e0e0e0;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px;">
+                    <div style="width: 50px; height: 50px; background: ${link.color || '#4CAF50'}20; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                        <i class="${link.icon || 'fab fa-link'}" style="color: ${link.color || '#4CAF50'}; font-size: 24px;"></i>
+                    </div>
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 5px 0;">${escapeHtml(link.platform)}</h4>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            ${requiredBadge}
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <span style="font-size: 12px; color: #666;">Points: ${link.rewardPoints || 100}</span>
+                            <span style="font-size: 12px; color: #666;">Order: ${link.order || 0}</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <p style="margin: 0 0 5px 0; font-size: 12px; color: #666; word-break: break-all;">
+                        <strong>URL:</strong> ${escapeHtml(link.url)}
+                    </p>
+                    ${link.label ? `<p style="margin: 0; font-size: 12px; color: #666;"><strong>Label:</strong> ${escapeHtml(link.label)}</p>` : ''}
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button onclick="editAdminSocialLink('${link.id}')" class="action-btn small" title="Edit">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button onclick="toggleAdminSocialLinkStatus('${link.id}')" class="action-btn small ${link.isActive ? 'warning' : 'success'}" title="${link.isActive ? 'Deactivate' : 'Activate'}">
+                        <i class="fas ${link.isActive ? 'fa-ban' : 'fa-check'}"></i> ${link.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button onclick="deleteAdminSocialLink('${link.id}')" class="action-btn small danger" title="Delete">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Update admin social links statistics
+ */
+function updateAdminSocialLinksStats() {
+    const totalLinks = adminSocialLinks.length;
+    const activeLinks = adminSocialLinks.filter(l => l.isActive === true).length;
+    const totalPoints = adminSocialLinks.reduce((sum, l) => sum + (l.rewardPoints || 0), 0);
+    
+    const totalEl = document.getElementById('adminTotalSocialLinks');
+    const activeEl = document.getElementById('adminActiveSocialLinks');
+    const pointsEl = document.getElementById('adminTotalPoints');
+    
+    if (totalEl) totalEl.textContent = totalLinks;
+    if (activeEl) activeEl.textContent = activeLinks;
+    if (pointsEl) pointsEl.textContent = totalPoints;
+}
+
+/**
+ * Show add social link form (admin)
+ */
+function showAddSocialLinkFormAdmin() {
+    console.log('Showing add social link form');
+    
+    // Reset form
+    document.getElementById('adminSocialLinkId').value = '';
+    document.getElementById('adminPlatformName').value = '';
+    document.getElementById('adminPlatformUrl').value = '';
+    document.getElementById('adminPlatformLabel').value = '';
+    document.getElementById('adminPlatformIcon').value = 'fab fa-whatsapp';
+    document.getElementById('adminPlatformColor').value = '#4CAF50';
+    document.getElementById('adminRewardPoints').value = '100';
+    document.getElementById('adminDisplayOrder').value = adminSocialLinks.length + 1;
+    document.getElementById('adminIsRequired').checked = false;
+    document.getElementById('adminIsActive').checked = true;
+    
+    document.getElementById('adminSocialLinkModalTitle').textContent = 'Add Social Link';
+    
+    // Show modal
+    const modal = document.getElementById('adminSocialLinkFormModal');
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    } else {
+        console.error('adminSocialLinkFormModal not found');
+        showToast('Form modal not found', 'error');
+    }
+}
+
+/**
+ * Close admin social link form modal
+ */
+function closeAdminSocialLinkFormModal() {
+    const modal = document.getElementById('adminSocialLinkFormModal');
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Save admin social link (create or update)
+ */
+async function saveAdminSocialLink() {
+    const id = document.getElementById('adminSocialLinkId').value;
+    const platform = document.getElementById('adminPlatformName').value.trim();
+    const url = document.getElementById('adminPlatformUrl').value.trim();
+    const label = document.getElementById('adminPlatformLabel').value.trim();
+    const icon = document.getElementById('adminPlatformIcon').value;
+    const color = document.getElementById('adminPlatformColor').value;
+    const rewardPoints = parseInt(document.getElementById('adminRewardPoints').value) || 100;
+    const order = parseInt(document.getElementById('adminDisplayOrder').value) || 1;
+    const isRequired = document.getElementById('adminIsRequired').checked;
+    const isActive = document.getElementById('adminIsActive').checked;
+    
+    if (!platform || !url) {
+        showToast('Please fill all required fields', 'error');
+        return;
+    }
+    
+    showLoading('Saving social link...');
+    
+    try {
+        const linkData = {
+            id: id || `link_${Date.now()}`,
+            platform: platform,
+            url: url,
+            label: label || `Follow us on ${platform}`,
+            icon: icon,
+            color: color,
+            rewardPoints: rewardPoints,
+            order: order,
+            isRequired: isRequired,
+            isActive: isActive,
+            updatedAt: new Date().toISOString()
+        };
+        
+        if (id) {
+            // Update existing link
+            const index = adminSocialLinks.findIndex(l => l.id === id);
+            if (index !== -1) {
+                adminSocialLinks[index] = linkData;
+            }
+        } else {
+            // Add new link
+            linkData.createdAt = new Date().toISOString();
+            adminSocialLinks.push(linkData);
+        }
+        
+        // Sort by order
+        adminSocialLinks.sort((a, b) => (a.order || 999) - (b.order || 999));
+        
+        // Save to Firestore
+        await db.collection('settings').doc('socialLinks').set({
+            links: adminSocialLinks,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser?.uid || 'admin'
+        });
+        
+        hideLoading();
+        showToast(`Social link ${id ? 'updated' : 'added'} successfully!`, 'success');
+        
+        closeAdminSocialLinkFormModal();
+        await loadAdminSocialLinksData(); // Refresh grid
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error saving social link:', error);
+        showToast('Error saving social link: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Edit admin social link
+ */
+async function editAdminSocialLink(linkId) {
+    const link = adminSocialLinks.find(l => l.id === linkId);
+    if (!link) {
+        showToast('Link not found', 'error');
+        return;
+    }
+    
+    console.log('Editing link:', link);
+    
+    // Fill form
+    document.getElementById('adminSocialLinkId').value = link.id;
+    document.getElementById('adminPlatformName').value = link.platform;
+    document.getElementById('adminPlatformUrl').value = link.url;
+    document.getElementById('adminPlatformLabel').value = link.label || '';
+    document.getElementById('adminPlatformIcon').value = link.icon || 'fab fa-whatsapp';
+    document.getElementById('adminPlatformColor').value = link.color || '#4CAF50';
+    document.getElementById('adminRewardPoints').value = link.rewardPoints || 100;
+    document.getElementById('adminDisplayOrder').value = link.order || 1;
+    document.getElementById('adminIsRequired').checked = link.isRequired || false;
+    document.getElementById('adminIsActive').checked = link.isActive !== false;
+    
+    document.getElementById('adminSocialLinkModalTitle').textContent = 'Edit Social Link';
+    
+    // Show modal
+    const modal = document.getElementById('adminSocialLinkFormModal');
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+/**
+ * Toggle admin social link status (activate/deactivate)
+ */
+async function toggleAdminSocialLinkStatus(linkId) {
+    const link = adminSocialLinks.find(l => l.id === linkId);
+    if (!link) return;
+    
+    const newStatus = !link.isActive;
+    const action = newStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`Are you sure you want to ${action} ${link.platform}?`)) return;
+    
+    showLoading(`Updating status...`);
+    
+    try {
+        link.isActive = newStatus;
+        link.updatedAt = new Date().toISOString();
+        
+        // Save to Firestore
+        await db.collection('settings').doc('socialLinks').set({
+            links: adminSocialLinks,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser?.uid || 'admin'
+        });
+        
+        hideLoading();
+        showToast(`${link.platform} ${action}d successfully!`, 'success');
+        
+        await loadAdminSocialLinksData();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error updating link status:', error);
+        showToast('Error updating status', 'error');
+    }
+}
+
+/**
+ * Delete admin social link
+ */
+async function deleteAdminSocialLink(linkId) {
+    const link = adminSocialLinks.find(l => l.id === linkId);
+    if (!link) return;
+    
+    if (!confirm(`Are you sure you want to permanently delete ${link.platform}?`)) return;
+    
+    showLoading('Deleting social link...');
+    
+    try {
+        adminSocialLinks = adminSocialLinks.filter(l => l.id !== linkId);
+        
+        // Save to Firestore
+        await db.collection('settings').doc('socialLinks').set({
+            links: adminSocialLinks,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser?.uid || 'admin'
+        });
+        
+        hideLoading();
+        showToast(`${link.platform} deleted successfully!`, 'success');
+        
+        await loadAdminSocialLinksData();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error deleting social link:', error);
+        showToast('Error deleting link', 'error');
+    }
+}
+
+// Expose admin social links functions
+window.openAdminSocialLinksModal = openAdminSocialLinksModal;
+window.closeAdminSocialLinksModal = closeAdminSocialLinksModal;
+window.showAddSocialLinkFormAdmin = showAddSocialLinkFormAdmin;
+window.closeAdminSocialLinkFormModal = closeAdminSocialLinkFormModal;
+window.saveAdminSocialLink = saveAdminSocialLink;
+window.editAdminSocialLink = editAdminSocialLink;
+window.toggleAdminSocialLinkStatus = toggleAdminSocialLinkStatus;
+window.deleteAdminSocialLink = deleteAdminSocialLink;

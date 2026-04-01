@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>SmartTask - Smart Way to Earn</title>
-
-    <link rel="icon" type="image/png" sizes="32x32" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png">
+    
+        <link rel="icon" type="image/png" sizes="32x32" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png">
+    
     <link rel="shortcut icon" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh9HKa5SpkDSfsDGWp02WtNm-JkBfMhSk_94wkvocbvnQR_VJ-UdBc5rgi_dcwOUqNjtKRmR8f4uzENk2KlIQ-IpfK2hSAxO3YPodWPAovQCqw8j60xzJTprQy-jzHhIh6E9SZOw3hD9pJuIjWS5x-3_MRqaYDr4StXTI-HIKqWv9LmYWI4uNhPBwY_iTI/s677/1002100107.png">
     
     <!-- Firebase SDKs -->
@@ -168,7 +169,7 @@
     <!-- User Dashboard -->
     <div id="userDashboard" class="dashboard user-dashboard">
         <!-- User Dashboard Header -->
-<div class="dashboard-header">
+    <div class="dashboard-header">
     <div class="header-left">
         <i class="fas fa-bars menu-toggle" onclick="toggleSidebar()"></i>
         <h2>SmartTask</h2>
@@ -184,10 +185,6 @@
     </button>
 </div>
         
-        <div class="notification-icon" onclick="toggleNotifications()">
-            <i class="fas fa-bell"></i>
-            <span class="notification-badge" id="notificationBadge">0</span>
-        </div>
         <div class="user-profile" onclick="toggleUserMenu()">
             <div class="user-profile-img" id="userProfileImg" style="width:35px;height:35px;border-radius:50%;background:#4CAF50;color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">U</div>
             <span id="userDisplayName"></span>
@@ -821,12 +818,10 @@
 <li onclick="switchAdminTab('bankAccounts')">
     <i class="fas fa-university"></i> <span>Bank Accounts</span>
 </li>
-<li onclick="switchSuperAdminTab('socialLinks')">
+<!-- In admin sidebar, add this menu item -->
+<li onclick="openAdminSocialLinksModal()">
     <i class="fas fa-share-alt"></i> <span>Social Links</span>
 </li>
-    <li onclick="switchAdminTab('settings')">
-        <i class="fas fa-cog"></i> <span>Settings</span>
-    </li>
 </ul>
         </div>
 
@@ -924,115 +919,7 @@
                     </div>
                 </div>
             </div>
-            
-<!-- Social Links Management Tab -->
-<div id="superAdminSocialLinksTab" class="tab-content">
-    <div class="tab-header">
-        <h2><i class="fas fa-share-alt"></i> Social Media Links Management</h2>
-        <button onclick="addNewSocialLink()" class="action-btn">
-            <i class="fas fa-plus"></i> Add New Link
-        </button>
-    </div>
-    
-    <div class="social-links-stats">
-        <div class="stat-mini-card">
-            <span>Total Links</span>
-            <span id="totalSocialLinks">0</span>
-        </div>
-        <div class="stat-mini-card">
-            <span>Active Links</span>
-            <span id="activeSocialLinks">0</span>
-        </div>
-        <div class="stat-mini-card">
-            <span>Total Points Available</span>
-            <span id="totalPointsAvailable">0</span>
-        </div>
-    </div>
-    
-    <div class="social-links-grid" id="socialLinksGrid">
-        <!-- Social links will be populated here -->
-    </div>
-</div>
-
-<!-- Add/Edit Social Link Modal -->
-<div id="socialLinkModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeSocialLinkModal()">&times;</span>
-        <h2 id="socialLinkModalTitle">Add Social Link</h2>
-        <form id="socialLinkForm" onsubmit="event.preventDefault(); saveSocialLink();">
-            <input type="hidden" id="socialLinkId">
-            
-            <div class="form-group">
-                <label>Platform Name *</label>
-                <input type="text" id="socialLinkPlatform" placeholder="e.g., WhatsApp, Telegram" required>
-            </div>
-            
-            <div class="form-group">
-                <label>URL *</label>
-                <input type="url" id="socialLinkUrl" placeholder="https://..." required>
-            </div>
-            
-            <div class="form-group">
-                <label>Label (Display Text)</label>
-                <input type="text" id="socialLinkLabel" placeholder="Join our WhatsApp group">
-            </div>
-            
-            <div class="form-group">
-                <label>Icon Class</label>
-                <select id="socialLinkIcon">
-                    <option value="fab fa-whatsapp">WhatsApp</option>
-                    <option value="fab fa-telegram">Telegram</option>
-                    <option value="fab fa-facebook">Facebook</option>
-                    <option value="fab fa-instagram">Instagram</option>
-                    <option value="fab fa-twitter">Twitter</option>
-                    <option value="fab fa-youtube">YouTube</option>
-                    <option value="fab fa-tiktok">TikTok</option>
-                    <option value="fab fa-discord">Discord</option>
-                    <option value="fab fa-linkedin">LinkedIn</option>
-                    <option value="fab fa-github">GitHub</option>
-                    <option value="fas fa-globe">Website</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label>Color (Hex code)</label>
-                <input type="color" id="socialLinkColor" value="#4CAF50">
-            </div>
-            
-            <div class="form-group">
-                <label>Points Reward</label>
-                <input type="number" id="socialLinkPoints" value="100" min="0" step="10">
-            </div>
-            
-            <div class="form-group">
-                <label>Display Order</label>
-                <input type="number" id="socialLinkOrder" value="1" min="1">
-            </div>
-            
-            <div class="form-group checkbox">
-                <label>
-                    <input type="checkbox" id="socialLinkRequired">
-                    Required for task completion
-                </label>
-            </div>
-            
-            <div class="form-group checkbox">
-                <label>
-                    <input type="checkbox" id="socialLinkActive" checked>
-                    Active (Visible to users)
-                </label>
-            </div>
-            
-            <div class="form-actions">
-                <button type="submit" class="auth-btn">Save Link</button>
-                <button type="button" onclick="closeSocialLinkModal()" class="auth-btn secondary">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-
-
+ 
 <!-- Users Management Tab - Enhanced -->
 <div id="usersTab" class="tab-content">
     <div class="tab-header">
@@ -3020,6 +2907,117 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Social Links Management Modal for Admin -->
+<div id="adminSocialLinksModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAdminSocialLinksModal()">&times;</span>
+        <h2><i class="fas fa-share-alt"></i> Social Links Management</h2>
+        
+        <div class="social-links-stats">
+            <div class="stat-mini-card">
+                <span>Total Links</span>
+                <span id="adminTotalSocialLinks">0</span>
+            </div>
+            <div class="stat-mini-card">
+                <span>Active Links</span>
+                <span id="adminActiveSocialLinks">0</span>
+            </div>
+            <div class="stat-mini-card">
+                <span>Total Points</span>
+                <span id="adminTotalPoints">0</span>
+            </div>
+        </div>
+        
+        <div class="social-links-grid" id="adminSocialLinksGrid">
+            <!-- Social links will be populated here -->
+            <div class="loading-methods">Loading social links...</div>
+        </div>
+        
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button onclick="showAddSocialLinkFormAdmin()" class="auth-btn">
+                <i class="fas fa-plus"></i> Add New Link
+            </button>
+            <button onclick="closeAdminSocialLinksModal()" class="auth-btn secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Social Link Form Modal for Admin -->
+<div id="adminSocialLinkFormModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAdminSocialLinkFormModal()">&times;</span>
+        <h2 id="adminSocialLinkModalTitle">Add Social Link</h2>
+        <form id="adminSocialLinkForm" onsubmit="event.preventDefault(); saveAdminSocialLink();">
+            <input type="hidden" id="adminSocialLinkId">
+            
+            <div class="form-group">
+                <label>Platform Name *</label>
+                <input type="text" id="adminPlatformName" placeholder="e.g., WhatsApp, Telegram, Facebook" required>
+            </div>
+            
+            <div class="form-group">
+                <label>URL *</label>
+                <input type="url" id="adminPlatformUrl" placeholder="https://..." required>
+            </div>
+            
+            <div class="form-group">
+                <label>Label (Display Text)</label>
+                <input type="text" id="adminPlatformLabel" placeholder="Join our WhatsApp group">
+            </div>
+            
+            <div class="form-group">
+                <label>Icon</label>
+                <select id="adminPlatformIcon">
+                    <option value="fab fa-whatsapp">WhatsApp</option>
+                    <option value="fab fa-telegram">Telegram</option>
+                    <option value="fab fa-facebook">Facebook</option>
+                    <option value="fab fa-instagram">Instagram</option>
+                    <option value="fab fa-twitter">Twitter</option>
+                    <option value="fab fa-youtube">YouTube</option>
+                    <option value="fab fa-tiktok">TikTok</option>
+                    <option value="fab fa-discord">Discord</option>
+                    <option value="fab fa-linkedin">LinkedIn</option>
+                    <option value="fab fa-github">GitHub</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Color</label>
+                <input type="color" id="adminPlatformColor" value="#4CAF50">
+            </div>
+            
+            <div class="form-group">
+                <label>Reward Points</label>
+                <input type="number" id="adminRewardPoints" value="100" min="10" step="10">
+            </div>
+            
+            <div class="form-group">
+                <label>Display Order</label>
+                <input type="number" id="adminDisplayOrder" value="1" min="1">
+            </div>
+            
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="adminIsRequired">
+                    Required for task completion
+                </label>
+            </div>
+            
+            <div class="form-group checkbox">
+                <label>
+                    <input type="checkbox" id="adminIsActive" checked>
+                    Active (Visible to users)
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Link</button>
+                <button type="button" onclick="closeAdminSocialLinkFormModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
     </div>
 </div>
 
