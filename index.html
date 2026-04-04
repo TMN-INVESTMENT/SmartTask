@@ -218,13 +218,6 @@
     <span class="bank-accounts-badge" id="bankAccountsBadge" style="display: none;">0</span>
 </a>
 
-<!-- In your user menu dropdown -->
-<a onclick="showSocialLinksModal()">
-    <i class="fas fa-share-alt"></i>
-    <span>Social Links</span>
-    <span class="social-links-badge" id="socialLinksBadge" style="display: none;">!</span>
-</a>
-    
     <!-- Weekly Commission Section - NEW -->
     <a onclick="showWeeklyCommission()">
         <i class="fas fa-calendar-week"></i>
@@ -267,9 +260,12 @@
                 <li onclick="switchUserTab('history')"><i class="fas fa-history"></i> <span>History</span></li>
             </ul>
         </div>
-
+        
         <!-- User Main Content -->
         <div class="main-content" id="userMainContent">
+            <!-- Social Links Modal Container (will be populated by JS) -->
+<!-- Social Links Modal Container -->
+<div id="socialModalRoot"></div>
             <!-- Overview Tab -->
             <div id="overviewTab" class="tab-content active">
                 <h2>Welcome Back, <span id="welcomeName">User</span>!</h2>
@@ -510,46 +506,6 @@
         <div id="depositFormLoading" class="form-loading" style="display: none;">
             <div class="spinner"></div>
             <p>Processing your deposit request...</p>
-        </div>
-    </div>
-</div>
-
-<!-- Social Links Modal for Users -->
-<div id="socialLinksModal" class="modal">
-    <div class="modal-content large">
-        <span class="close" onclick="closeSocialLinksModal()">&times;</span>
-        <h2><i class="fas fa-share-alt"></i> Follow Our Social Media</h2>
-        <p class="modal-subtitle">Follow our social media pages to stay updated and earn rewards!</p>
-        
-        <div class="social-links-progress">
-            <div class="progress-label">
-                <span>Completion Progress</span>
-                <span id="socialLinksProgressText">0/0 Completed</span>
-            </div>
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill" id="socialLinksProgressFill" style="width: 0%;"></div>
-            </div>
-        </div>
-        
-        <div class="social-links-list" id="socialLinksList">
-            <!-- Social links will be populated here -->
-        </div>
-        
-        <div class="social-links-info">
-            <div class="info-box">
-                <i class="fas fa-gift"></i>
-                <div>
-                    <strong>Reward Information</strong>
-                    <p>Follow each link to earn reward points. Complete all required links to unlock additional bonuses!</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="modal-actions">
-            <button onclick="checkAllSocialLinks()" class="action-btn success">
-                <i class="fas fa-check-double"></i> Verify All
-            </button>
-            <button onclick="closeSocialLinksModal()" class="action-btn secondary">Close</button>
         </div>
     </div>
 </div>
@@ -819,9 +775,7 @@
     <i class="fas fa-university"></i> <span>Bank Accounts</span>
 </li>
 <!-- In admin sidebar, add this menu item -->
-<li onclick="openAdminSocialLinksModal()">
-    <i class="fas fa-share-alt"></i> <span>Social Links</span>
-</li>
+
 </ul>
         </div>
 
@@ -919,7 +873,7 @@
                     </div>
                 </div>
             </div>
- 
+
 <!-- Users Management Tab - Enhanced -->
 <div id="usersTab" class="tab-content">
     <div class="tab-header">
@@ -1892,21 +1846,25 @@
                 </div>
             </div>
             
-            <div class="profile-detail-section">
-                <h3><i class="fas fa-gift"></i> Referral Earnings</h3>
-                <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 1 Commission:</span>
-                    <span class="detail-value profit" id="profileLevel1Comm">0 TZS</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 2 Commission:</span>
-                    <span class="detail-value profit" id="profileLevel2Comm">0 TZS</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-chart-line"></i> Level 3 Commission:</span>
-                    <span class="detail-value profit" id="profileLevel3Comm">0 TZS</span>
-                </div>
-            </div>
+<div class="profile-detail-section">
+    <h3><i class="fas fa-gift"></i> Referral Earnings</h3>
+    <div class="detail-item">
+        <span class="detail-label"><i class="fas fa-chart-line"></i> Level 1 Commission:</span>
+        <span class="detail-value profit" id="profileLevel1Comm">0 TZS</span>
+    </div>
+    <div class="detail-item">
+        <span class="detail-label"><i class="fas fa-chart-line"></i> Level 2 Commission:</span>
+        <span class="detail-value profit" id="profileLevel2Comm">0 TZS</span>
+    </div>
+    <div class="detail-item">
+        <span class="detail-label"><i class="fas fa-chart-line"></i> Level 3 Commission:</span>
+        <span class="detail-value profit" id="profileLevel3Comm">0 TZS</span>
+    </div>
+    <div class="detail-item">
+        <span class="detail-label"><i class="fas fa-money-bill-wave"></i> First Deposit Bonuses:</span>
+        <span class="detail-value profit" id="profileFirstDepositBonus">0 TZS</span>
+    </div>
+</div>
             
             <div class="profile-detail-section">
     <h3><i class="fas fa-code-branch"></i> Referral Link</h3>
@@ -2910,112 +2868,148 @@
     </div>
 </div>
 
-<!-- Social Links Management Modal for Admin -->
-<div id="adminSocialLinksModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeAdminSocialLinksModal()">&times;</span>
-        <h2><i class="fas fa-share-alt"></i> Social Links Management</h2>
+<!-- Social Links Modal - Auto Popup -->
+<div id="socialLinksModal" class="modal">
+    <div class="modal-content social-modal-content">
+        <div class="social-modal-header">
+            <div class="social-header-icon">
+                <i class="fas fa-share-alt"></i>
+            </div>
+            <h2>Follow Our Social Media</h2>
+            <p>Follow us to stay updated with latest news and promotions!</p>
+            <button class="social-modal-close" onclick="closeSocialLinksModal()">&times;</button>
+        </div>
         
-        <div class="social-links-stats">
-            <div class="stat-mini-card">
-                <span>Total Links</span>
-                <span id="adminTotalSocialLinks">0</span>
+        <div class="social-progress-section">
+            <div class="social-progress-info">
+                <span><i class="fas fa-chart-line"></i> Completion Progress</span>
+                <span id="socialProgressCount">0/0 Links Followed</span>
             </div>
-            <div class="stat-mini-card">
-                <span>Active Links</span>
-                <span id="adminActiveSocialLinks">0</span>
-            </div>
-            <div class="stat-mini-card">
-                <span>Total Points</span>
-                <span id="adminTotalPoints">0</span>
+            <div class="social-progress-bar">
+                <div class="social-progress-fill" id="socialProgressFill" style="width: 0%;"></div>
             </div>
         </div>
         
-        <div class="social-links-grid" id="adminSocialLinksGrid">
-            <!-- Social links will be populated here -->
-            <div class="loading-methods">Loading social links...</div>
+        <div class="social-links-container" id="socialLinksContainer">
+            <div class="social-loading">
+                <i class="fas fa-spinner fa-spin"></i> Loading links...
+            </div>
         </div>
         
-        <div class="modal-actions" style="margin-top: 20px;">
-            <button onclick="showAddSocialLinkFormAdmin()" class="auth-btn">
-                <i class="fas fa-plus"></i> Add New Link
+        <div class="social-modal-footer">
+            <div class="social-reminder" id="socialReminder">
+                <i class="fas fa-bell"></i>
+                <span>Please follow all links above to continue using our services</span>
+            </div>
+            <button class="social-verify-all" id="socialVerifyAllBtn" onclick="verifyAllSocialLinks()" style="display: none;">
+                <i class="fas fa-check-double"></i> Verify All
             </button>
-            <button onclick="closeAdminSocialLinksModal()" class="auth-btn secondary">Close</button>
         </div>
     </div>
 </div>
 
-<!-- Add/Edit Social Link Form Modal for Admin -->
-<div id="adminSocialLinkFormModal" class="modal">
+<!-- Admin Social Links Management Modal -->
+<div id="adminSocialLinksModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeAdminSocialLinksModal()">&times;</span>
+        <h2><i class="fab fa-superpowers"></i> Social Links Management</h2>
+        
+        <div class="admin-social-header">
+            <button class="action-btn" onclick="showAddSocialLinkForm()">
+                <i class="fas fa-plus"></i> Add New Link
+            </button>
+            <div class="admin-social-stats">
+                <span>Total: <strong id="adminTotalLinks">0</strong></span>
+                <span>Active: <strong id="adminActiveLinks">0</strong></span>
+            </div>
+        </div>
+        
+        <div class="social-table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Icon</th>
+                        <th>Platform</th>
+                        <th>Description</th>
+                        <th>Link</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="adminSocialLinksBody">
+                    <tr><td colspan="6" class="no-data">Loading social links...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Social Link Form Modal -->
+<div id="socialLinkFormModal" class="modal">
     <div class="modal-content">
-        <span class="close" onclick="closeAdminSocialLinkFormModal()">&times;</span>
-        <h2 id="adminSocialLinkModalTitle">Add Social Link</h2>
-        <form id="adminSocialLinkForm" onsubmit="event.preventDefault(); saveAdminSocialLink();">
-            <input type="hidden" id="adminSocialLinkId">
+        <span class="close" onclick="closeSocialLinkFormModal()">&times;</span>
+        <h2 id="socialLinkFormTitle">Add Social Link</h2>
+        <form id="socialLinkForm" onsubmit="event.preventDefault(); saveSocialLink();">
+            <input type="hidden" id="socialLinkId">
+            
+            <div class="form-group">
+                <label>Platform Icon *</label>
+                <div class="icon-selector-wrapper">
+                    <select id="socialLinkIcon" onchange="updateSocialIconPreview()" required>
+                        <option value="fab fa-facebook-f">📘 Facebook</option>
+                        <option value="fab fa-twitter">🐦 Twitter / X</option>
+                        <option value="fab fa-instagram">📷 Instagram</option>
+                        <option value="fab fa-youtube">📺 YouTube</option>
+                        <option value="fab fa-whatsapp">💬 WhatsApp</option>
+                        <option value="fab fa-tiktok">🎵 TikTok</option>
+                        <option value="fab fa-twitch">🎮 Twitch</option>
+                        <option value="fab fa-telegram">✈️ Telegram</option>
+                        <option value="fab fa-discord">🎧 Discord</option>
+                        <option value="fab fa-linkedin-in">🔗 LinkedIn</option>
+                        <option value="fab fa-pinterest">📌 Pinterest</option>
+                        <option value="fab fa-snapchat">👻 Snapchat</option>
+                        <option value="fab fa-reddit-alien">🤖 Reddit</option>
+                        <option value="fab fa-github">🐙 GitHub</option>
+                        <option value="fas fa-globe">🌐 Website</option>
+                        <option value="fas fa-link">🔗 Other</option>
+                    </select>
+                    <div class="icon-preview-box" id="socialIconPreview">
+                        <i class="fab fa-facebook-f"></i>
+                    </div>
+                </div>
+            </div>
             
             <div class="form-group">
                 <label>Platform Name *</label>
-                <input type="text" id="adminPlatformName" placeholder="e.g., WhatsApp, Telegram, Facebook" required>
+                <input type="text" id="socialLinkTitle" placeholder="e.g., Facebook, Twitter" required>
             </div>
             
             <div class="form-group">
-                <label>URL *</label>
-                <input type="url" id="adminPlatformUrl" placeholder="https://..." required>
+                <label>Description (Optional)</label>
+                <textarea id="socialLinkDescription" rows="2" placeholder="Follow us for updates..."></textarea>
             </div>
             
             <div class="form-group">
-                <label>Label (Display Text)</label>
-                <input type="text" id="adminPlatformLabel" placeholder="Join our WhatsApp group">
+                <label>Link URL *</label>
+                <input type="url" id="socialLinkUrl" placeholder="https://facebook.com/yourpage" required>
             </div>
             
             <div class="form-group">
-                <label>Icon</label>
-                <select id="adminPlatformIcon">
-                    <option value="fab fa-whatsapp">WhatsApp</option>
-                    <option value="fab fa-telegram">Telegram</option>
-                    <option value="fab fa-facebook">Facebook</option>
-                    <option value="fab fa-instagram">Instagram</option>
-                    <option value="fab fa-twitter">Twitter</option>
-                    <option value="fab fa-youtube">YouTube</option>
-                    <option value="fab fa-tiktok">TikTok</option>
-                    <option value="fab fa-discord">Discord</option>
-                    <option value="fab fa-linkedin">LinkedIn</option>
-                    <option value="fab fa-github">GitHub</option>
+                <label>Status</label>
+                <select id="socialLinkStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
                 </select>
             </div>
             
             <div class="form-group">
-                <label>Color</label>
-                <input type="color" id="adminPlatformColor" value="#4CAF50">
-            </div>
-            
-            <div class="form-group">
-                <label>Reward Points</label>
-                <input type="number" id="adminRewardPoints" value="100" min="10" step="10">
-            </div>
-            
-            <div class="form-group">
                 <label>Display Order</label>
-                <input type="number" id="adminDisplayOrder" value="1" min="1">
-            </div>
-            
-            <div class="form-group checkbox">
-                <label>
-                    <input type="checkbox" id="adminIsRequired">
-                    Required for task completion
-                </label>
-            </div>
-            
-            <div class="form-group checkbox">
-                <label>
-                    <input type="checkbox" id="adminIsActive" checked>
-                    Active (Visible to users)
-                </label>
+                <input type="number" id="socialLinkOrder" value="0" min="0">
             </div>
             
             <div class="form-actions">
                 <button type="submit" class="auth-btn">Save Link</button>
-                <button type="button" onclick="closeAdminSocialLinkFormModal()" class="auth-btn secondary">Cancel</button>
+                <button type="button" onclick="closeSocialLinkFormModal()" class="auth-btn secondary">Cancel</button>
             </div>
         </form>
     </div>

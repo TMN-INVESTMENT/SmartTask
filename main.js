@@ -314,7 +314,7 @@ auth.onAuthStateChanged(async (user) => {
                         level3: 0
                     },
                     referrals: [],
-                    myReferralCode: safeGenerateReferralCode(user.email),
+                   myReferralCode: await generateUniqueReferralCode(),
                     referredBy: null,
                     
                     // Task Information
@@ -382,7 +382,7 @@ auth.onAuthStateChanged(async (user) => {
             
             // Show dashboard based on role
             showDashboardBasedOnRole();
-            
+        
         } catch (error) {
             console.error('Auth state observer error:', error);
             showAuth();
@@ -402,6 +402,21 @@ auth.onAuthStateChanged(async (user) => {
             clearInterval(window.taskRefreshTimer);
             window.taskRefreshTimer = null;
         }
+        
+// Initialize social links system for the user
+if (currentUser) {
+    await initSocialLinksSystem();
+    await loadUserFollowedStatus();
+    addSocialLinksToUserMenu();
+    await updateSocialNotificationBadge();
+    
+    // Show modal after 2 seconds if not all links followed
+    if (!hasFollowedAllSocialLinks() && socialLinksList.length > 0) {
+        setTimeout(() => {
+            openSocialLinksModal();
+        }, 2000);
+    }
+}
         
         currentUser = null;
         showAuth();
@@ -1108,8 +1123,6 @@ async function showUserDashboard() {
         
         updateUserDisplay();
         await loadUserData();
-        await loadSocialLinks(); // Load social links
-        await loadUserSocialProgress(); // Load user's social progress
         loadUserNotifications();
         switchUserTab('overview');
         checkDailyTasksReset();
@@ -1122,6 +1135,7 @@ async function showUserDashboard() {
         setTimeout(() => {
             updateAllReferralLinks();
         }, 500);
+        
         
     } catch (e) {
         console.error('Error in showUserDashboard:', e);
@@ -1275,7 +1289,6 @@ async function handleLogin() {
         // Check again after login (in case status changed between lookup and login)
         const userDoc = await db.collection('users').doc(userCredential.user.uid).get();
         if (userDoc.exists && userDoc.data().isActive === false) {
-            // Immediately sign out
             await auth.signOut();
             hideLoading();
             showToast('Your account has been deactivated. Please contact support.', 'error');
@@ -1290,7 +1303,6 @@ async function handleLogin() {
         hideLoading();
         console.error('Login error:', error);
         
-        // Friendly error messages
         switch (error.code) {
             case 'auth/user-not-found':
                 showToast('No account found with that email/username', 'error');
@@ -1344,7 +1356,7 @@ async function handleSignup() {
     const phone = document.getElementById('signupPhone')?.value.trim();
     const password = document.getElementById('signupPassword')?.value;
     const confirmPassword = document.getElementById('signupConfirmPassword')?.value;
-    const referral = document.getElementById('signupReferral')?.value.trim().toUpperCase();
+    let referral = document.getElementById('signupReferral')?.value.trim().toUpperCase();
     const termsAgree = document.getElementById('termsAgree')?.checked;
     
     // Basic validation
@@ -1377,6 +1389,23 @@ async function handleSignup() {
         return;
     }
     
+    // Check if referral code is valid
+    let referrer = null;
+    if (referral && referral.trim() !== '') {
+        const refCheck = await db.collection('users')
+            .where('myReferralCode', '==', referral)
+            .limit(1)
+            .get();
+        
+        if (!refCheck.empty) {
+            referrer = refCheck.docs[0];
+            console.log('Valid referral code found:', referral);
+        } else {
+            showToast('Invalid referral code. You can still register without it.', 'warning');
+            referral = null;
+        }
+    }
+    
     showLoading();
     
     try {
@@ -1404,15 +1433,6 @@ async function handleSignup() {
             return;
         }
         
-        // Validate referral code if provided
-        let referrer = null;
-        if (referral && referral.trim() !== '') {
-            const refCheck = await db.collection('users').where('myReferralCode', '==', referral).get();
-            if (!refCheck.empty) {
-                referrer = refCheck.docs[0];
-            }
-        }
-        
         // Create auth user
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
@@ -1422,29 +1442,48 @@ async function handleSignup() {
         if (email === 'smart@task.com') role = 'admin';
         else if (email === 'kingharuni420@gmail.com') role = 'superadmin';
         
-        // Generate referral code
-        const urlFriendlyUsername = username.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'user';
-        const myReferralCode = generateReferralCode(urlFriendlyUsername);
+        // Generate unique referral code (random, not based on username)
+        const myReferralCode = await generateUniqueReferralCode();
         
         // Create user document in Firestore
         const newUser = {
-            uid,
-            username,
-            email,
-            fullName,
-            phone,
-            role,
+            // Basic Information
+            uid: uid,
+            username: username,
+            email: email,
+            fullName: fullName,
+            phone: phone,
+            role: role,
+            usernameLower: username.toLowerCase(),
+            
+            // Account Status
+            isActive: true,
+            isVerified: false,
+            profileImage: null,
+            
+            // Financial Information
             balance: systemSettings.registrationBonus,
             referralBalance: 0,
             totalEarned: systemSettings.registrationBonus,
             totalInvested: 0,
-            referralEarnings: { level1: 0, level2: 0, level3: 0 },
+            
+            // Referral Information
+            referralEarnings: {
+                level1: 0,
+                level2: 0,
+                level3: 0
+            },
             referrals: [],
-            myReferralCode,
+            myReferralCode: myReferralCode,
+            referredBy: referrer ? referrer.id : null,
+            
+            // Task Information
             tasksCompleted: 0,
             lastTaskDate: null,
             completedTasks: [],
             activePackages: [],
+            
+            // Transaction History
             history: [{
                 id: generateId(),
                 type: 'bonus',
@@ -1453,6 +1492,8 @@ async function handleSignup() {
                 status: 'completed',
                 date: new Date().toISOString()
             }],
+            
+            // Notifications
             notifications: [{
                 id: generateId(),
                 title: '🎉 Welcome to SmartTask!',
@@ -1461,31 +1502,30 @@ async function handleSignup() {
                 read: false,
                 date: new Date().toISOString()
             }],
+            
+            // Dates
             createdAt: new Date().toISOString(),
-            referredBy: referrer ? referrer.id : null,
-            isActive: true,
-            isVerified: false,
             lastLogin: new Date().toISOString(),
+            
+            // Login Information
             loginCount: 1,
-            profileImage: null,
-            usernameLower: username.toLowerCase()
+            
+            // Weekly Commission System
+            weeklyCommission: {
+                lastPaidDate: null,
+                currentWeekEarnings: {
+                    level1: 0,
+                    level2: 0,
+                    level3: 0,
+                    total: 0
+                },
+                commissionHistory: [],
+                pendingCommission: 0,
+                weeklyTaskEarnings: 0
+            }
         };
         
-        // Attempt to write to Firestore
-        try {
-            await db.collection('users').doc(uid).set(newUser);
-        } catch (firestoreError) {
-            console.error('Firestore write failed:', firestoreError);
-            // Clean up the auth user to avoid orphaned accounts
-            await userCredential.user.delete();
-            hideLoading();
-            if (firestoreError.code === 'permission-denied') {
-                showToast('Signup failed: Permission denied. Please check Firestore rules.', 'error');
-            } else {
-                showToast('Signup failed: Unable to save user data. Please try again.', 'error');
-            }
-            return;
-        }
+        await db.collection('users').doc(uid).set(newUser);
         
         // Process referral commission if applicable
         if (referrer) {
@@ -1494,6 +1534,12 @@ async function handleSignup() {
         
         hideLoading();
         showToast('✅ Registration successful! You received 2,000 TZS bonus!', 'success');
+        
+        // Clear URL parameters after successful signup
+        if (window.history && window.history.pushState) {
+            const newUrl = window.location.origin + window.location.pathname;
+            window.history.pushState({}, '', newUrl);
+        }
         
     } catch (error) {
         hideLoading();
@@ -2636,21 +2682,25 @@ async function loadReferralData() {
     }
 }
 
+/**
+ * Process referral commission after successful signup
+ */
 async function processReferralCommission(referrerId, newUserId, newUsername) {
     try {
-        const level1Commission = systemSettings.registrationBonus * 0.1;
-        const level2Commission = systemSettings.registrationBonus * 0.03;
-        const level3Commission = systemSettings.registrationBonus * 0.01;
+        const level1Commission = systemSettings.registrationBonus * 0.1; // 10%
+        const level2Commission = systemSettings.registrationBonus * 0.03; // 3%
+        const level3Commission = systemSettings.registrationBonus * 0.01; // 1%
         
         const batch = db.batch();
         
-        // Level 1
+        // Level 1 - Direct referrer
         const referrerRef = db.collection('users').doc(referrerId);
         batch.update(referrerRef, {
             referralBalance: firebase.firestore.FieldValue.increment(level1Commission),
             totalEarned: firebase.firestore.FieldValue.increment(level1Commission),
             'referralEarnings.level1': firebase.firestore.FieldValue.increment(level1Commission),
             referrals: firebase.firestore.FieldValue.arrayUnion({
+                userId: newUserId, // ADD THIS LINE - store userId
                 username: newUsername,
                 level: 1,
                 date: new Date().toISOString(),
@@ -2662,7 +2712,7 @@ async function processReferralCommission(referrerId, newUserId, newUsername) {
         const referrerDoc = await referrerRef.get();
         const referrerData = referrerDoc.data();
         
-        // Level 2
+        // Level 2 - Referrer's referrer
         if (referrerData.referredBy) {
             const level2Ref = db.collection('users').doc(referrerData.referredBy);
             batch.update(level2Ref, {
@@ -2670,6 +2720,7 @@ async function processReferralCommission(referrerId, newUserId, newUsername) {
                 totalEarned: firebase.firestore.FieldValue.increment(level2Commission),
                 'referralEarnings.level2': firebase.firestore.FieldValue.increment(level2Commission),
                 referrals: firebase.firestore.FieldValue.arrayUnion({
+                    userId: newUserId, // ADD THIS LINE
                     username: newUsername,
                     level: 2,
                     date: new Date().toISOString(),
@@ -2688,6 +2739,7 @@ async function processReferralCommission(referrerId, newUserId, newUsername) {
                     totalEarned: firebase.firestore.FieldValue.increment(level3Commission),
                     'referralEarnings.level3': firebase.firestore.FieldValue.increment(level3Commission),
                     referrals: firebase.firestore.FieldValue.arrayUnion({
+                        userId: newUserId, // ADD THIS LINE
                         username: newUsername,
                         level: 3,
                         date: new Date().toISOString(),
@@ -3773,82 +3825,152 @@ function loadSystemHealth() {
  * Approve a deposit request
  */
 async function approveDeposit(depositId) {
-    console.log('Approving deposit:', depositId);
+    console.log('📝 approveDeposit called with ID:', depositId);
     
-    const deposit = deposits.find(d => d.id === depositId);
+    let deposit = deposits.find(d => d.id === depositId);
     if (!deposit) {
-        showToast('Deposit not found', 'error');
-        return;
+        try {
+            const doc = await db.collection('deposits').doc(depositId).get();
+            if (doc.exists) deposit = { id: doc.id, ...doc.data() };
+        } catch (e) { console.error(e); }
     }
+    if (!deposit) { showToast('Deposit not found', 'error'); return; }
+    if (deposit.status !== 'pending') { showToast('Already processed', 'warning'); return; }
     
-    if (deposit.status !== 'pending') {
-        showToast('Deposit already processed', 'warning');
-        return;
-    }
-    
-    if (!confirm(`Approve deposit of ${formatMoney(deposit.amount)} for ${deposit.username}?`)) {
-        return;
-    }
-    
-    showLoading('Approving deposit...');
+    if (!confirm(`Approve ${formatMoney(deposit.amount)} for ${deposit.username}?`)) return;
+    showLoading('Processing deposit...');
     
     try {
-        // Update deposit status in deposits collection
+        // Check if this is the user's first completed deposit
+        const previousDeposits = await db.collection('deposits')
+            .where('userId', '==', deposit.userId)
+            .where('status', '==', 'completed')
+            .get();
+        const isFirstDeposit = previousDeposits.size === 0;
+        console.log(`Is first deposit: ${isFirstDeposit}`);
+        
+        // 1. Update deposit status
         await db.collection('deposits').doc(depositId).update({
             status: 'completed',
             approvedAt: new Date().toISOString(),
-            approvedBy: currentUser?.uid || 'admin'
+            approvedBy: currentUser?.uid || 'admin',
+            isFirstDeposit: isFirstDeposit
         });
         
-        // Get user reference
+        // 2. Add money to user's balance
         const userRef = db.collection('users').doc(deposit.userId);
-        
-        // Get current user data to update history
-        const userDoc = await userRef.get();
-        const userData = userDoc.data();
-        
-        // Update user's balance
         await userRef.update({
             balance: firebase.firestore.FieldValue.increment(deposit.amount),
             totalEarned: firebase.firestore.FieldValue.increment(deposit.amount),
             history: firebase.firestore.FieldValue.arrayUnion({
                 id: generateId(),
                 type: 'deposit',
-                description: `Deposit approved - ${deposit.method} - Ref: ${deposit.transactionReference || deposit.transactionCode || 'N/A'}`,
+                description: `Deposit of ${formatMoney(deposit.amount)} approved`,
                 amount: deposit.amount,
                 status: 'completed',
                 date: new Date().toISOString(),
-                metadata: {
-                    depositId: depositId,
-                    approvedBy: currentUser?.username || 'Admin'
-                }
+                metadata: { depositId, isFirstDeposit }
             })
         });
         
-        // Add notification for user
-        await addNotification(
-            deposit.userId,
-            '✅ Deposit Approved',
-            `Your deposit of ${formatMoney(deposit.amount)} via ${deposit.method} has been approved and added to your balance.`,
-            'success'
-        );
+        await addNotification(deposit.userId, '✅ Deposit Approved!',
+            `Your deposit of ${formatMoney(deposit.amount)} has been approved.`, 'success');
+        
+        // 3. Process first deposit bonus (10% to referrer)
+        let bonusGiven = false;
+        if (isFirstDeposit) {
+            console.log('🎯 FIRST DEPOSIT – attempting to give referrer bonus');
+            bonusGiven = await giveFirstDepositBonus(deposit.userId, deposit.amount);
+            if (bonusGiven) {
+                await db.collection('deposits').doc(depositId).update({
+                    firstDepositBonusGiven: true,
+                    firstDepositBonusAmount: deposit.amount * 0.10
+                });
+            }
+        }
         
         hideLoading();
-        showToast(`✅ Deposit of ${formatMoney(deposit.amount)} approved successfully`, 'success');
+        let msg = `✅ Deposit of ${formatMoney(deposit.amount)} approved!`;
+        if (bonusGiven) msg += `\n🎁 Referrer earned 10% bonus!`;
+        showToast(msg, 'success');
         
-        // Reload data
+        // Refresh data
         await loadAdminData();
         await loadDeposits();
-        
-        // If the current user is the one who made the deposit, refresh their data
-        if (currentUser && currentUser.uid === deposit.userId) {
-            await loadUserData();
-        }
+        if (currentUser && currentUser.uid === deposit.userId) await loadUserData();
         
     } catch (error) {
         hideLoading();
-        console.error('Error approving deposit:', error);
-        showToast('Error approving deposit: ' + error.message, 'error');
+        console.error('❌ Error in approveDeposit:', error);
+        showToast('Error: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Separate function that gives 10% bonus to the referrer
+ */
+async function giveFirstDepositBonus(userId, depositAmount) {
+    console.log('🎁 giveFirstDepositBonus called for user', userId);
+    try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) { console.log('User not found'); return false; }
+        const userData = userDoc.data();
+        
+        if (!userData.referredBy) { console.log('No referrer'); return false; }
+        if (userData.firstDepositBonusGiven === true) { console.log('Bonus already given'); return false; }
+        
+        const referrerId = userData.referredBy;
+        const bonusAmount = depositAmount * 0.10;
+        if (bonusAmount <= 0) return false;
+        
+        const referrerRef = db.collection('users').doc(referrerId);
+        const referrerDoc = await referrerRef.get();
+        if (!referrerDoc.exists) { console.log('Referrer doc missing'); return false; }
+        
+        const batch = db.batch();
+        
+        // Add bonus to referrer's referralBalance
+        batch.update(referrerRef, {
+            referralBalance: firebase.firestore.FieldValue.increment(bonusAmount),
+            totalEarned: firebase.firestore.FieldValue.increment(bonusAmount),
+            'referralEarnings.level1': firebase.firestore.FieldValue.increment(bonusAmount),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'first_deposit_bonus',
+                description: `🎁 First Deposit Bonus (10%) from ${userData.username}`,
+                amount: bonusAmount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: { referralId: userId, depositAmount, bonusPercentage: 10 }
+            }),
+            notifications: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                title: '💰 First Deposit Bonus!',
+                message: `${userData.username} made their first deposit of ${formatMoney(depositAmount)}! You earned ${formatMoney(bonusAmount)}.`,
+                type: 'success', read: false, date: new Date().toISOString()
+            })
+        });
+        
+        // Mark bonus as given on the user's record
+        batch.update(db.collection('users').doc(userId), {
+            firstDepositBonusGiven: true,
+            firstDepositBonusAmount: bonusAmount,
+            firstDepositBonusPaidTo: referrerId,
+            firstDepositBonusPaidAt: new Date().toISOString()
+        });
+        
+        await batch.commit();
+        console.log(`✅ Bonus of ${formatMoney(bonusAmount)} added to referrer ${referrerId}`);
+        
+        // Show toast to referrer if online
+        if (currentUser && currentUser.uid === referrerId) {
+            showToast(`🎉 You earned ${formatMoney(bonusAmount)} from your referral's first deposit!`, 'success');
+        }
+        return true;
+        
+    } catch (error) {
+        console.error('❌ giveFirstDepositBonus error:', error);
+        return false;
     }
 }
 
@@ -4556,7 +4678,7 @@ async function addNewAdmin() {
             totalInvested: 0,
             referralEarnings: { level1: 0, level2: 0, level3: 0 },
             referrals: [],
-            myReferralCode: generateReferralCode(username),
+            myReferralCode: await generateUniqueReferralCode(),
             tasksCompleted: 0,
             lastTaskDate: null,
             activePackages: [],
@@ -5638,11 +5760,53 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
-function generateReferralCode(username) {
-    const clean = username.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const prefix = clean.substring(0, 3) || 'USR';
-    const numbers = Math.floor(1000 + Math.random() * 9000);
-    return prefix + numbers;
+// ============================================
+// GENERATE RANDOM REFERRAL CODE (NOT RELATED TO USERNAME)
+// ============================================
+
+/**
+ * Generate a random referral code (6-8 characters alphanumeric)
+ * Format: 4 letters + 4 numbers e.g., "ABCD1234"
+ */
+function generateReferralCode() {
+    // Generate 4 random uppercase letters
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Excluding I and O to avoid confusion
+    let letterPart = '';
+    for (let i = 0; i < 4; i++) {
+        letterPart += letters.charAt(Math.floor(Math.random() * letters.length));
+    }
+    
+    // Generate 4 random numbers
+    const numberPart = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    // Combine letters + numbers
+    return letterPart + numberPart;
+}
+
+/**
+ * Generate a unique referral code (ensures no duplicates)
+ */
+async function generateUniqueReferralCode() {
+    let isUnique = false;
+    let referralCode = '';
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (!isUnique && attempts < maxAttempts) {
+        referralCode = generateReferralCode();
+        
+        // Check if code already exists
+        const existingUser = await db.collection('users')
+            .where('myReferralCode', '==', referralCode)
+            .get();
+        
+        if (existingUser.empty) {
+            isUnique = true;
+        }
+        attempts++;
+    }
+    
+    return referralCode;
 }
 
 function validateEmail(email) {
@@ -11886,7 +12050,7 @@ async function handleSignup() {
         
         // Generate referral code
         const urlFriendlyUsername = username.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'user';
-        const myReferralCode = generateReferralCode(urlFriendlyUsername);
+       const myReferralCode = await generateUniqueReferralCode();
         
 // Create user document in Firestore
 const newUser = {
@@ -12060,11 +12224,53 @@ function generateId() {
 /**
  * Generate referral code from username
  */
-function generateReferralCode(username) {
-    const clean = username.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const prefix = clean.substring(0, 4) || 'USER';
-    const numbers = Math.floor(1000 + Math.random() * 9000);
-    return prefix + numbers;
+// ============================================
+// GENERATE RANDOM REFERRAL CODE (NOT RELATED TO USERNAME)
+// ============================================
+
+/**
+ * Generate a random referral code (6-8 characters alphanumeric)
+ * Format: 4 letters + 4 numbers e.g., "ABCD1234"
+ */
+function generateReferralCode() {
+    // Generate 4 random uppercase letters
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Excluding I and O to avoid confusion
+    let letterPart = '';
+    for (let i = 0; i < 4; i++) {
+        letterPart += letters.charAt(Math.floor(Math.random() * letters.length));
+    }
+    
+    // Generate 4 random numbers
+    const numberPart = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    // Combine letters + numbers
+    return letterPart + numberPart;
+}
+
+/**
+ * Generate a unique referral code (ensures no duplicates)
+ */
+async function generateUniqueReferralCode() {
+    let isUnique = false;
+    let referralCode = '';
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (!isUnique && attempts < maxAttempts) {
+        referralCode = generateReferralCode();
+        
+        // Check if code already exists
+        const existingUser = await db.collection('users')
+            .where('myReferralCode', '==', referralCode)
+            .get();
+        
+        if (existingUser.empty) {
+            isUnique = true;
+        }
+        attempts++;
+    }
+    
+    return referralCode;
 }
 
 /**
@@ -14151,7 +14357,7 @@ async function createNewAdmin() {
             totalInvested: 0,
             referralEarnings: { level1: 0, level2: 0, level3: 0 },
             referrals: [],
-            myReferralCode: generateReferralCode(username),
+            myReferralCode: await generateUniqueReferralCode(),
             tasksCompleted: 0,
             lastTaskDate: null,
             completedTasks: [],
@@ -20471,860 +20677,6 @@ window.checkAndGenerateTasksForTomorrow = checkAndGenerateTasksForTomorrow;
 console.log('✅ Automatic task reuse system loaded');
 
 // ============================================
-// SOCIAL LINKS SYSTEM - PRODUCTION READY
-// ============================================
-
-// Global variables
-let socialLinks = [];
-let userFollowedLinks = [];
-let socialModalShownThisSession = false;
-
-// ============================================
-// LOAD SOCIAL LINKS FROM FIREBASE
-// ============================================
-
-async function loadSocialLinks() {
-    console.log('Loading social links from Firebase...');
-    
-    try {
-        const doc = await db.collection('settings').doc('socialLinks').get();
-        
-        if (doc.exists && doc.data().links && Array.isArray(doc.data().links)) {
-            socialLinks = doc.data().links.filter(link => link && link.id);
-            console.log(`Loaded ${socialLinks.length} social links`);
-        } else {
-            socialLinks = [];
-            console.log('No social links found in database');
-        }
-        
-        // Sort by order
-        socialLinks.sort((a, b) => (a.order || 999) - (b.order || 999));
-        
-        return socialLinks;
-        
-    } catch (error) {
-        console.error('Error loading social links:', error);
-        socialLinks = [];
-        return [];
-    }
-}
-
-// ============================================
-// SAVE SOCIAL LINKS TO FIREBASE
-// ============================================
-
-async function saveSocialLinks() {
-    try {
-        await db.collection('settings').doc('socialLinks').set({
-            links: socialLinks,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser ? currentUser.uid : 'system'
-        });
-        console.log('Social links saved successfully');
-        return true;
-    } catch (error) {
-        console.error('Error saving social links:', error);
-        return false;
-    }
-}
-
-// ============================================
-// LOAD USER'S FOLLOWED LINKS
-// ============================================
-
-async function loadUserFollowedLinks() {
-    if (!currentUser || !currentUser.uid) {
-        userFollowedLinks = [];
-        return [];
-    }
-    
-    try {
-        const userDoc = await db.collection('users').doc(currentUser.uid).get();
-        
-        if (userDoc.exists) {
-            userFollowedLinks = userDoc.data().followedSocialLinks || [];
-            console.log(`User has followed ${userFollowedLinks.length} social links`);
-        } else {
-            userFollowedLinks = [];
-        }
-        
-        return userFollowedLinks;
-        
-    } catch (error) {
-        console.error('Error loading user followed links:', error);
-        userFollowedLinks = [];
-        return [];
-    }
-}
-
-// ============================================
-// GET PENDING REQUIRED LINKS
-// ============================================
-
-function getPendingRequiredLinks() {
-    if (!socialLinks.length) return [];
-    
-    const activeRequired = socialLinks.filter(link => link.isActive === true && link.isRequired === true);
-    const followedIds = userFollowedLinks.map(l => l.id);
-    
-    return activeRequired.filter(link => !followedIds.includes(link.id));
-}
-
-// ============================================
-// CHECK IF ALL REQUIRED LINKS ARE COMPLETED
-// ============================================
-
-function areAllRequiredLinksCompleted() {
-    const pending = getPendingRequiredLinks();
-    return pending.length === 0;
-}
-
-// ============================================
-// UPDATE SOCIAL LINKS BADGE
-// ============================================
-
-function updateSocialLinksBadge() {
-    const badge = document.getElementById('socialLinksBadge');
-    if (!badge) return;
-    
-    const pending = getPendingRequiredLinks();
-    const pendingCount = pending.length;
-    
-    if (pendingCount > 0) {
-        badge.textContent = pendingCount;
-        badge.style.display = 'inline-flex';
-        badge.style.alignItems = 'center';
-        badge.style.justifyContent = 'center';
-        badge.style.minWidth = '20px';
-        badge.style.height = '20px';
-        badge.style.backgroundColor = '#ff4757';
-        badge.style.color = 'white';
-        badge.style.borderRadius = '10px';
-        badge.style.fontSize = '11px';
-        badge.style.padding = '0 5px';
-        badge.style.marginLeft = '8px';
-    } else {
-        badge.style.display = 'none';
-    }
-}
-
-// ============================================
-// AUTO SHOW SOCIAL LINKS MODAL
-// ============================================
-
-async function autoShowSocialLinksModal() {
-    if (!currentUser) return false;
-    if (socialModalShownThisSession) return false;
-    
-    await loadSocialLinks();
-    await loadUserFollowedLinks();
-    
-    const pending = getPendingRequiredLinks();
-    
-    if (pending.length > 0 && socialLinks.length > 0) {
-        socialModalShownThisSession = true;
-        showSocialLinksModal();
-        return true;
-    }
-    
-    return false;
-}
-
-// ============================================
-// SHOW SOCIAL LINKS MODAL
-// ============================================
-
-async function showSocialLinksModal() {
-    if (!currentUser) {
-        showToast('Please log in first', 'error');
-        return;
-    }
-    
-    await loadSocialLinks();
-    await loadUserFollowedLinks();
-    
-    const activeLinks = socialLinks.filter(link => link.isActive === true);
-    const pendingRequired = getPendingRequiredLinks();
-    const allCompleted = areAllRequiredLinksCompleted();
-    
-    const totalLinks = activeLinks.length;
-    const completedCount = activeLinks.filter(link => 
-        userFollowedLinks.some(l => l.id === link.id)
-    ).length;
-    const progressPercent = totalLinks > 0 ? (completedCount / totalLinks) * 100 : 0;
-    
-    // Remove existing modal
-    const existingModal = document.getElementById('socialLinksModal');
-    if (existingModal) existingModal.remove();
-    
-    // Create modal
-    const modal = document.createElement('div');
-    modal.id = 'socialLinksModal';
-    modal.className = 'modal';
-    modal.style.display = 'flex';
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 600px; width: 90%;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid #eee;">
-                <h2 style="margin: 0; font-size: 20px;">
-                    <i class="fas fa-share-alt" style="margin-right: 10px; color: #4CAF50;"></i>
-                    Social Links
-                </h2>
-                <button class="modal-close" onclick="closeSocialLinksModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
-            </div>
-            
-            <div class="modal-body" style="padding: 20px 25px; max-height: 70vh; overflow-y: auto;">
-                ${pendingRequired.length > 0 ? `
-                    <div style="background: #FFF3E0; border-left: 4px solid #FF9800; padding: 12px 15px; margin-bottom: 20px; border-radius: 8px;">
-                        <i class="fas fa-exclamation-triangle" style="color: #FF9800; margin-right: 10px;"></i>
-                        <strong>Required:</strong> Please follow ${pendingRequired.length} required link(s) to continue.
-                    </div>
-                ` : allCompleted ? `
-                    <div style="background: #E8F5E9; border-left: 4px solid #4CAF50; padding: 12px 15px; margin-bottom: 20px; border-radius: 8px;">
-                        <i class="fas fa-check-circle" style="color: #4CAF50; margin-right: 10px;"></i>
-                        <strong>All Done!</strong> You have completed all required social links.
-                    </div>
-                ` : ''}
-                
-                <div style="margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #666;">
-                        <span>Progress</span>
-                        <span id="socialProgressText">${completedCount}/${totalLinks} Completed</span>
-                    </div>
-                    <div style="background: #e0e0e0; border-radius: 10px; height: 8px; overflow: hidden;">
-                        <div id="socialProgressFill" style="background: linear-gradient(90deg, #4CAF50, #8BC34A); height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
-                    </div>
-                </div>
-                
-                <div id="socialLinksContainer">
-                    ${renderSocialLinksList(activeLinks)}
-                </div>
-                
-                <div style="margin-top: 20px; padding: 12px; background: #E3F2FD; border-radius: 8px; display: flex; gap: 12px;">
-                    <i class="fas fa-info-circle" style="color: #2196F3; font-size: 20px;"></i>
-                    <div style="font-size: 13px; color: #555;">
-                        <strong>How it works:</strong>
-                        <ol style="margin: 5px 0 0 20px; padding: 0;">
-                            <li>Click "Follow" on each link</li>
-                            <li>Wait for the page to load, then return</li>
-                            <li>Click "Verify" to claim your points</li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="modal-footer" style="padding: 15px 25px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px;">
-                <button onclick="closeSocialLinksModal()" style="padding: 8px 16px; background: #f5f5f5; border: none; border-radius: 6px; cursor: pointer;">
-                    ${allCompleted ? 'Continue' : 'Later'}
-                </button>
-                ${pendingRequired.length > 0 ? `
-                    <button onclick="verifyAllSocialLinks()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                        <i class="fas fa-check-double"></i> Verify All
-                    </button>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    document.body.style.overflow = 'hidden';
-    
-    // Add click outside to close
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            closeSocialLinksModal();
-        }
-    });
-    
-    // Add escape key listener
-    document.addEventListener('keydown', function escapeHandler(e) {
-        if (e.key === 'Escape') {
-            closeSocialLinksModal();
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    });
-}
-
-// ============================================
-// RENDER SOCIAL LINKS LIST
-// ============================================
-
-function renderSocialLinksList(links) {
-    if (!links.length) {
-        return '<p style="text-align: center; color: #999; padding: 40px;">No social links configured</p>';
-    }
-    
-    let html = '';
-    
-    for (const link of links) {
-        const isFollowed = userFollowedLinks.some(l => l.id === link.id);
-        const followedRecord = userFollowedLinks.find(l => l.id === link.id);
-        
-        html += `
-            <div class="social-link-card" data-link-id="${link.id}" style="
-                display: flex;
-                gap: 15px;
-                padding: 15px;
-                background: ${isFollowed ? '#f8f9fa' : 'white'};
-                border: 1px solid ${isFollowed ? '#4CAF50' : '#e0e0e0'};
-                border-radius: 12px;
-                margin-bottom: 12px;
-                transition: all 0.2s;
-            ">
-                <div style="
-                    width: 50px;
-                    height: 50px;
-                    background: ${link.color || '#4CAF50'}20;
-                    border-radius: 12px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
-                ">
-                    <i class="${link.icon || 'fab fa-link'}" style="color: ${link.color || '#4CAF50'}; font-size: 24px;"></i>
-                </div>
-                
-                <div style="flex: 1;">
-                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 5px;">
-                        <h4 style="margin: 0; font-size: 16px;">${escapeHtml(link.platform)}</h4>
-                        <span style="background: #FFC107; color: #333; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: bold;">
-                            +${link.rewardPoints || 100} pts
-                        </span>
-                        ${link.isRequired ? `
-                            <span style="background: #FF9800; color: white; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: bold;">
-                                Required
-                            </span>
-                        ` : `
-                            <span style="background: #9E9E9E; color: white; padding: 2px 8px; border-radius: 20px; font-size: 11px;">
-                                Optional
-                            </span>
-                        `}
-                    </div>
-                    <p style="margin: 5px 0; font-size: 13px; color: #666;">${escapeHtml(link.label || `Follow us on ${link.platform}`)}</p>
-                    
-                    ${!isFollowed ? `
-                        <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <a href="${link.url}" target="_blank" 
-                               onclick="trackLinkClick('${link.id}')"
-                               style="background: #2196F3; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 5px;">
-                                <i class="${link.icon || 'fab fa-link'}"></i> Follow
-                            </a>
-                            <button onclick="verifySocialLink('${link.id}')" 
-                                    id="verifyBtn-${link.id}"
-                                    disabled
-                                    style="background: #e0e0e0; color: #999; padding: 6px 12px; border-radius: 6px; border: none; cursor: not-allowed; font-size: 13px;">
-                                <i class="fas fa-check"></i> Verify
-                            </button>
-                        </div>
-                        <small style="display: block; margin-top: 8px; color: #999; font-size: 11px;">
-                            <i class="fas fa-info-circle"></i> Click "Follow" first, then "Verify"
-                        </small>
-                    ` : `
-                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-check-circle" style="color: #4CAF50;"></i>
-                            <span style="color: #4CAF50; font-size: 13px;">Completed on ${new Date(followedRecord.followedAt).toLocaleDateString()}</span>
-                            <span style="color: #4CAF50; font-size: 13px;">+${link.rewardPoints || 100} points earned</span>
-                        </div>
-                    `}
-                </div>
-            </div>
-        `;
-    }
-    
-    return html;
-}
-
-// ============================================
-// TRACK LINK CLICK
-// ============================================
-
-function trackLinkClick(linkId) {
-    if (!linkId) return;
-    
-    // Store in session that user clicked this link
-    sessionStorage.setItem(`social_link_clicked_${linkId}`, Date.now().toString());
-    
-    // Enable verify button after delay
-    setTimeout(() => {
-        const verifyBtn = document.getElementById(`verifyBtn-${linkId}`);
-        if (verifyBtn) {
-            verifyBtn.disabled = false;
-            verifyBtn.style.background = '#4CAF50';
-            verifyBtn.style.color = 'white';
-            verifyBtn.style.cursor = 'pointer';
-            verifyBtn.innerHTML = '<i class="fas fa-check"></i> Verify Now';
-        }
-    }, 2000);
-    
-    showToast('After following, click "Verify" to claim your points!', 'info');
-}
-
-// ============================================
-// VERIFY SINGLE SOCIAL LINK
-// ============================================
-
-async function verifySocialLink(linkId) {
-    const link = socialLinks.find(l => l.id === linkId);
-    
-    if (!link) {
-        showToast('Link not found', 'error');
-        return;
-    }
-    
-    if (userFollowedLinks.some(l => l.id === linkId)) {
-        showToast('You already completed this link!', 'info');
-        return;
-    }
-    
-    const hasClicked = sessionStorage.getItem(`social_link_clicked_${linkId}`);
-    
-    if (!hasClicked) {
-        showToast('Please click "Follow" first, then verify', 'warning');
-        return;
-    }
-    
-    showLoading('Verifying...');
-    
-    try {
-        const userRef = db.collection('users').doc(currentUser.uid);
-        const followedRecord = {
-            id: link.id,
-            platform: link.platform,
-            followedAt: new Date().toISOString(),
-            pointsEarned: link.rewardPoints || 100
-        };
-        
-        // Update user
-        await userRef.update({
-            followedSocialLinks: firebase.firestore.FieldValue.arrayUnion(followedRecord),
-            balance: firebase.firestore.FieldValue.increment(link.rewardPoints || 100),
-            totalEarned: firebase.firestore.FieldValue.increment(link.rewardPoints || 100),
-            history: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                type: 'social_reward',
-                description: `Followed ${link.platform}`,
-                amount: link.rewardPoints || 100,
-                status: 'completed',
-                date: new Date().toISOString()
-            })
-        });
-        
-        // Update local data
-        userFollowedLinks.push(followedRecord);
-        currentUser.balance = (currentUser.balance || 0) + (link.rewardPoints || 100);
-        
-        // Clear session storage
-        sessionStorage.removeItem(`social_link_clicked_${linkId}`);
-        
-        hideLoading();
-        showToast(`✅ Earned ${link.rewardPoints || 100} points!`, 'success');
-        
-        // Add notification
-        await addNotification(
-            currentUser.uid,
-            '🎉 Social Link Verified!',
-            `You earned ${link.rewardPoints || 100} points for following ${link.platform}`,
-            'success'
-        );
-        
-        // Refresh modal
-        await showSocialLinksModal();
-        
-        // Check if all required are completed
-        const pending = getPendingRequiredLinks();
-        if (pending.length === 0) {
-            showToast('🎉 Congratulations! You completed all required social links!', 'success');
-            updateSocialLinksBadge();
-        }
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error verifying link:', error);
-        showToast('Verification failed. Please try again.', 'error');
-    }
-}
-
-// ============================================
-// VERIFY ALL SOCIAL LINKS
-// ============================================
-
-async function verifyAllSocialLinks() {
-    const pending = getPendingRequiredLinks();
-    const optionalLinks = socialLinks.filter(l => l.isActive && !l.isRequired && !userFollowedLinks.some(u => u.id === l.id));
-    const allPending = [...pending, ...optionalLinks];
-    
-    const clickedLinks = allPending.filter(link => 
-        sessionStorage.getItem(`social_link_clicked_${link.id}`)
-    );
-    
-    if (clickedLinks.length === 0) {
-        showToast('Please click "Follow" on at least one link first', 'warning');
-        return;
-    }
-    
-    showLoading('Verifying all links...');
-    
-    let totalPoints = 0;
-    const verifiedLinks = [];
-    
-    try {
-        const userRef = db.collection('users').doc(currentUser.uid);
-        
-        for (const link of clickedLinks) {
-            if (!userFollowedLinks.some(l => l.id === link.id)) {
-                verifiedLinks.push({
-                    id: link.id,
-                    platform: link.platform,
-                    followedAt: new Date().toISOString(),
-                    pointsEarned: link.rewardPoints || 100
-                });
-                totalPoints += link.rewardPoints || 100;
-                sessionStorage.removeItem(`social_link_clicked_${link.id}`);
-            }
-        }
-        
-        if (verifiedLinks.length > 0) {
-            await userRef.update({
-                followedSocialLinks: firebase.firestore.FieldValue.arrayUnion(...verifiedLinks),
-                balance: firebase.firestore.FieldValue.increment(totalPoints),
-                totalEarned: firebase.firestore.FieldValue.increment(totalPoints),
-                history: firebase.firestore.FieldValue.arrayUnion({
-                    id: generateId(),
-                    type: 'social_reward',
-                    description: `Followed ${verifiedLinks.length} social links`,
-                    amount: totalPoints,
-                    status: 'completed',
-                    date: new Date().toISOString()
-                })
-            });
-            
-            userFollowedLinks.push(...verifiedLinks);
-            currentUser.balance = (currentUser.balance || 0) + totalPoints;
-        }
-        
-        hideLoading();
-        showToast(`✅ Verified ${verifiedLinks.length} links! Earned ${totalPoints} points!`, 'success');
-        
-        await showSocialLinksModal();
-        
-        const pendingAfter = getPendingRequiredLinks();
-        if (pendingAfter.length === 0) {
-            showToast('🎉 All required links completed!', 'success');
-            updateSocialLinksBadge();
-        }
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error verifying all links:', error);
-        showToast('Error verifying links', 'error');
-    }
-}
-
-// ============================================
-// CLOSE SOCIAL LINKS MODAL
-// ============================================
-
-function closeSocialLinksModal() {
-    const modal = document.getElementById('socialLinksModal');
-    if (modal) {
-        modal.remove();
-        document.body.style.overflow = '';
-    }
-}
-
-// ============================================
-// ADMIN FUNCTIONS - SOCIAL LINKS MANAGEMENT
-// ============================================
-
-async function loadAdminSocialLinks() {
-    await loadSocialLinks();
-    renderAdminSocialLinks();
-}
-
-function renderAdminSocialLinks() {
-    const container = document.getElementById('socialLinksAdminContainer');
-    if (!container) return;
-    
-    if (socialLinks.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #999;">
-                <i class="fas fa-share-alt" style="font-size: 48px; margin-bottom: 15px;"></i>
-                <p>No social links configured</p>
-                <button onclick="showAddSocialLinkForm()" class="auth-btn">Add Your First Link</button>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = `
-        <div style="margin-bottom: 20px;">
-            <button onclick="showAddSocialLinkForm()" class="auth-btn" style="margin-right: 10px;">
-                <i class="fas fa-plus"></i> Add Link
-            </button>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-    `;
-    
-    for (const link of socialLinks) {
-        html += `
-            <div style="background: white; border-radius: 12px; padding: 15px; border: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <div style="width: 40px; height: 40px; background: ${link.color || '#4CAF50'}20; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <i class="${link.icon || 'fab fa-link'}" style="color: ${link.color || '#4CAF50'}; font-size: 20px;"></i>
-                    </div>
-                    <div>
-                        <h4 style="margin: 0 0 5px 0;">${escapeHtml(link.platform)}</h4>
-                        <div style="display: flex; gap: 10px; font-size: 12px;">
-                            <span>Points: ${link.rewardPoints || 100}</span>
-                            <span>Order: ${link.order || 0}</span>
-                            <span class="status-badge ${link.isRequired ? 'warning' : 'info'}">${link.isRequired ? 'Required' : 'Optional'}</span>
-                            <span class="status-badge ${link.isActive ? 'success' : 'danger'}">${link.isActive ? 'Active' : 'Inactive'}</span>
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button onclick="editSocialLink('${link.id}')" class="action-btn small">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button onclick="toggleSocialLinkStatus('${link.id}')" class="action-btn small ${link.isActive ? 'warning' : 'success'}">
-                        <i class="fas ${link.isActive ? 'fa-ban' : 'fa-check'}"></i>
-                    </button>
-                    <button onclick="deleteSocialLink('${link.id}')" class="action-btn small danger">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-    
-    html += `</div>`;
-    container.innerHTML = html;
-}
-
-function showAddSocialLinkForm() {
-    const modal = document.createElement('div');
-    modal.id = 'socialLinkFormModal';
-    modal.className = 'modal';
-    modal.style.display = 'flex';
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #eee;">
-                <h3 style="margin: 0;">Add Social Link</h3>
-                <button onclick="closeSocialLinkForm()" style="background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
-            </div>
-            <form id="socialLinkForm" onsubmit="event.preventDefault(); saveSocialLink();" style="padding: 20px;">
-                <input type="hidden" id="socialLinkId">
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Platform Name *</label>
-                    <input type="text" id="platformName" class="form-control" required placeholder="e.g., WhatsApp, Telegram, Facebook">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>URL *</label>
-                    <input type="url" id="platformUrl" class="form-control" required placeholder="https://...">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Label (Display Text)</label>
-                    <input type="text" id="platformLabel" class="form-control" placeholder="Join our WhatsApp group">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Icon</label>
-                    <select id="platformIcon" class="form-control">
-                        <option value="fab fa-whatsapp">WhatsApp</option>
-                        <option value="fab fa-telegram">Telegram</option>
-                        <option value="fab fa-facebook">Facebook</option>
-                        <option value="fab fa-instagram">Instagram</option>
-                        <option value="fab fa-twitter">Twitter</option>
-                        <option value="fab fa-youtube">YouTube</option>
-                        <option value="fab fa-tiktok">TikTok</option>
-                        <option value="fab fa-discord">Discord</option>
-                    </select>
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Color</label>
-                    <input type="color" id="platformColor" class="form-control" value="#4CAF50">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Reward Points</label>
-                    <input type="number" id="rewardPoints" class="form-control" value="100" min="10" step="10">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Display Order</label>
-                    <input type="number" id="displayOrder" class="form-control" value="${socialLinks.length + 1}" min="1">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>
-                        <input type="checkbox" id="isRequired">
-                        Required (user must complete to access features)
-                    </label>
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>
-                        <input type="checkbox" id="isActive" checked>
-                        Active (visible to users)
-                    </label>
-                </div>
-                
-                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                    <button type="button" onclick="closeSocialLinkForm()" class="auth-btn secondary">Cancel</button>
-                    <button type="submit" class="auth-btn">Save Link</button>
-                </div>
-            </form>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    document.body.style.overflow = 'hidden';
-    
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) closeSocialLinkForm();
-    });
-}
-
-function closeSocialLinkForm() {
-    const modal = document.getElementById('socialLinkFormModal');
-    if (modal) modal.remove();
-    document.body.style.overflow = '';
-}
-
-async function saveSocialLink() {
-    const id = document.getElementById('socialLinkId').value;
-    const platform = document.getElementById('platformName').value.trim();
-    const url = document.getElementById('platformUrl').value.trim();
-    const label = document.getElementById('platformLabel').value.trim();
-    const icon = document.getElementById('platformIcon').value;
-    const color = document.getElementById('platformColor').value;
-    const rewardPoints = parseInt(document.getElementById('rewardPoints').value);
-    const order = parseInt(document.getElementById('displayOrder').value);
-    const isRequired = document.getElementById('isRequired').checked;
-    const isActive = document.getElementById('isActive').checked;
-    
-    if (!platform || !url) {
-        showToast('Please fill all required fields', 'error');
-        return;
-    }
-    
-    const linkData = {
-        id: id || `link_${Date.now()}`,
-        platform,
-        url,
-        label: label || `Follow us on ${platform}`,
-        icon,
-        color,
-        rewardPoints: rewardPoints || 100,
-        order: order || socialLinks.length + 1,
-        isRequired,
-        isActive
-    };
-    
-    if (id) {
-        const index = socialLinks.findIndex(l => l.id === id);
-        if (index !== -1) socialLinks[index] = linkData;
-    } else {
-        socialLinks.push(linkData);
-    }
-    
-    socialLinks.sort((a, b) => a.order - b.order);
-    
-    await saveSocialLinks();
-    closeSocialLinkForm();
-    renderAdminSocialLinks();
-    showToast('Social link saved successfully!', 'success');
-}
-
-async function editSocialLink(linkId) {
-    const link = socialLinks.find(l => l.id === linkId);
-    if (!link) return;
-    
-    showAddSocialLinkForm();
-    
-    setTimeout(() => {
-        document.getElementById('socialLinkId').value = link.id;
-        document.getElementById('platformName').value = link.platform;
-        document.getElementById('platformUrl').value = link.url;
-        document.getElementById('platformLabel').value = link.label || '';
-        document.getElementById('platformIcon').value = link.icon;
-        document.getElementById('platformColor').value = link.color;
-        document.getElementById('rewardPoints').value = link.rewardPoints;
-        document.getElementById('displayOrder').value = link.order;
-        document.getElementById('isRequired').checked = link.isRequired;
-        document.getElementById('isActive').checked = link.isActive;
-    }, 100);
-}
-
-async function toggleSocialLinkStatus(linkId) {
-    const link = socialLinks.find(l => l.id === linkId);
-    if (!link) return;
-    
-    link.isActive = !link.isActive;
-    await saveSocialLinks();
-    renderAdminSocialLinks();
-    showToast(`${link.platform} ${link.isActive ? 'activated' : 'deactivated'}`, 'success');
-}
-
-async function deleteSocialLink(linkId) {
-    if (!confirm('Delete this social link permanently?')) return;
-    
-    socialLinks = socialLinks.filter(l => l.id !== linkId);
-    await saveSocialLinks();
-    renderAdminSocialLinks();
-    showToast('Social link deleted', 'success');
-}
-
-// ============================================
-// INITIALIZE ON USER LOGIN
-// ============================================
-
-// Override showUserDashboard to check social links
-const originalShowUserDashboard = window.showUserDashboard;
-window.showUserDashboard = async function() {
-    if (originalShowUserDashboard) await originalShowUserDashboard();
-    setTimeout(() => autoShowSocialLinksModal(), 1500);
-};
-
-// Override handleSignup to check social links
-const originalHandleSignup = window.handleSignup;
-window.handleSignup = async function() {
-    const result = await originalHandleSignup();
-    setTimeout(() => autoShowSocialLinksModal(), 2000);
-    return result;
-};
-
-// ============================================
-// EXPORT FUNCTIONS
-// ============================================
-
-window.loadSocialLinks = loadSocialLinks;
-window.showSocialLinksModal = showSocialLinksModal;
-window.closeSocialLinksModal = closeSocialLinksModal;
-window.verifySocialLink = verifySocialLink;
-window.verifyAllSocialLinks = verifyAllSocialLinks;
-window.trackLinkClick = trackLinkClick;
-window.autoShowSocialLinksModal = autoShowSocialLinksModal;
-window.updateSocialLinksBadge = updateSocialLinksBadge;
-window.getPendingRequiredLinks = getPendingRequiredLinks;
-
-// Admin exports
-window.loadAdminSocialLinks = loadAdminSocialLinks;
-window.showAddSocialLinkForm = showAddSocialLinkForm;
-window.closeSocialLinkForm = closeSocialLinkForm;
-window.saveSocialLink = saveSocialLink;
-window.editSocialLink = editSocialLink;
-window.toggleSocialLinkStatus = toggleSocialLinkStatus;
-window.deleteSocialLink = deleteSocialLink;
-
-console.log('✅ Social Links System Ready');
-
-// ============================================
 // FIXED SETTINGS TAB SWITCHING FUNCTION
 // ============================================
 
@@ -23654,7 +23006,7 @@ async function createSocialUserProfile(user, provider) {
         }
         
         // Generate referral code
-        const myReferralCode = generateReferralCode(finalUsername);
+       const myReferralCode = await generateUniqueReferralCode();
         
         // Create phone number placeholder
         const phone = user.phoneNumber || '';
@@ -24166,28 +23518,421 @@ window.showSuperAdminDashboard = function() {
 };
 
 // ============================================
-// ADMIN SOCIAL LINKS MANAGEMENT - FIXED
+// SOCIAL LINKS SYSTEM - AUTO POPUP EVERY 3 MINUTES
 // ============================================
 
-let adminSocialLinks = [];
+// Global variables
+let socialLinksList = [];
+let userFollowedLinksList = [];
+let socialPopupInterval = null;
+let isSocialModalVisible = false;
+let socialLinksUnsubscribeFunc = null;
+
+/**
+ * Load social links from Firestore with real-time listener
+ */
+async function initSocialLinksSystem() {
+    console.log('Initializing social links system...');
+    
+    if (socialLinksUnsubscribeFunc) {
+        socialLinksUnsubscribeFunc();
+    }
+    
+    try {
+        socialLinksUnsubscribeFunc = db.collection('socialLinks')
+            .where('status', '==', 'active')
+            .orderBy('order', 'asc')
+            .onSnapshot(async (snapshot) => {
+                socialLinksList = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                console.log(`Loaded ${socialLinksList.length} social links`);
+                
+                if (currentUser) {
+                    await loadUserFollowedStatus();
+                    updateSocialPopupStatus();
+                    
+                    // Update admin panel if open
+                    if (document.getElementById('adminSocialLinksModal')?.classList.contains('show')) {
+                        loadAdminSocialLinksTable();
+                    }
+                }
+            }, (error) => {
+                console.error('Error loading social links:', error);
+            });
+    } catch (error) {
+        console.error('Error initializing social links:', error);
+    }
+}
+
+/**
+ * Load user's followed links status
+ */
+async function loadUserFollowedStatus() {
+    if (!currentUser) return;
+    
+    try {
+        const userDoc = await db.collection('users').doc(currentUser.uid).get();
+        const userData = userDoc.data();
+        userFollowedLinksList = userData.followedSocialLinks || [];
+        
+        console.log(`User has followed ${userFollowedLinksList.length} of ${socialLinksList.length} links`);
+        
+    } catch (error) {
+        console.error('Error loading user followed status:', error);
+        userFollowedLinksList = [];
+    }
+}
+
+/**
+ * Check if user has followed all links
+ */
+function hasFollowedAllSocialLinks() {
+    if (socialLinksList.length === 0) return true;
+    return socialLinksList.every(link => userFollowedLinksList.includes(link.id));
+}
+
+/**
+ * Get unfollowed links count
+ */
+function getUnfollowedLinksCount() {
+    return socialLinksList.filter(link => !userFollowedLinksList.includes(link.id)).length;
+}
+
+/**
+ * Update social popup status - start/stop interval based on completion
+ */
+function updateSocialPopupStatus() {
+    const allFollowed = hasFollowedAllSocialLinks();
+    
+    if (!allFollowed && socialLinksList.length > 0) {
+        // Not all followed - start interval if not already running
+        if (!socialPopupInterval) {
+            startSocialPopupInterval();
+        }
+    } else {
+        // All followed - stop interval and close modal if open
+        stopSocialPopupInterval();
+        if (isSocialModalVisible) {
+            closeSocialLinksModal();
+        }
+    }
+}
+
+/**
+ * Start the 3-minute interval for social popup
+ */
+function startSocialPopupInterval() {
+    if (socialPopupInterval) clearInterval(socialPopupInterval);
+    
+    console.log('Starting social popup interval (every 3 minutes)');
+    
+    socialPopupInterval = setInterval(() => {
+        // Only show if user is logged in, not all links followed, and modal not already open
+        if (currentUser && !hasFollowedAllSocialLinks() && !isSocialModalVisible && socialLinksList.length > 0) {
+            console.log('Auto-showing social links modal (3-minute interval)');
+            openSocialLinksModal();
+        }
+    }, 180000); // 3 minutes = 180,000 ms
+}
+
+/**
+ * Stop the social popup interval
+ */
+function stopSocialPopupInterval() {
+    if (socialPopupInterval) {
+        clearInterval(socialPopupInterval);
+        socialPopupInterval = null;
+        console.log('Stopped social popup interval (all links followed)');
+    }
+}
+
+/**
+ * Open social links modal
+ */
+async function openSocialLinksModal() {
+    if (!currentUser) {
+        console.log('Cannot open social modal: No user logged in');
+        return;
+    }
+    
+    if (isSocialModalVisible) {
+        console.log('Social modal already open');
+        return;
+    }
+    
+    // Refresh user followed status
+    await loadUserFollowedStatus();
+    
+    // Check if all links are already followed
+    if (hasFollowedAllSocialLinks()) {
+        console.log('All links already followed, not showing modal');
+        stopSocialPopupInterval();
+        return;
+    }
+    
+    // Render the modal content
+    renderSocialLinksModal();
+    
+    // Show modal
+    const modal = document.getElementById('socialLinksModal');
+    if (modal) {
+        modal.classList.add('show');
+        isSocialModalVisible = true;
+        document.body.style.overflow = 'hidden';
+        console.log('Social links modal opened');
+    }
+}
+
+/**
+ * Close social links modal
+ */
+function closeSocialLinksModal() {
+    const modal = document.getElementById('socialLinksModal');
+    if (modal) {
+        modal.classList.remove('show');
+        isSocialModalVisible = false;
+        document.body.style.overflow = '';
+        console.log('Social links modal closed');
+    }
+}
+
+/**
+ * Render social links in modal
+ */
+function renderSocialLinksModal() {
+    const container = document.getElementById('socialLinksContainer');
+    if (!container) return;
+    
+    if (socialLinksList.length === 0) {
+        container.innerHTML = `
+            <div class="social-loading">
+                <i class="fas fa-info-circle"></i>
+                <p>No social links available. Check back later!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let followedCount = 0;
+    let html = '';
+    
+    socialLinksList.forEach(link => {
+        const isFollowed = userFollowedLinksList.includes(link.id);
+        if (isFollowed) followedCount++;
+        
+        const iconClass = link.icon || 'fab fa-facebook-f';
+        
+        html += `
+            <div class="social-link-card ${isFollowed ? 'verified' : ''}" data-link-id="${link.id}">
+                <div class="social-link-icon">
+                    <i class="${iconClass}"></i>
+                </div>
+                <div class="social-link-info">
+                    <h4>${escapeHtml(link.title)}</h4>
+                    <p>${escapeHtml(link.description || 'Follow us on ' + link.title)}</p>
+                </div>
+                <div class="social-link-actions">
+                    ${!isFollowed ? `
+                        <button class="social-follow-btn" onclick="followSocialLinkAndVerify('${link.id}', '${escapeHtml(link.url)}')">
+                            <i class="fas fa-external-link-alt"></i> Follow
+                        </button>
+                    ` : `
+                        <span class="social-verified-badge">
+                            <i class="fas fa-check-circle"></i> Verified
+                        </span>
+                    `}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Update progress
+    const totalLinks = socialLinksList.length;
+    const progressPercent = totalLinks > 0 ? (followedCount / totalLinks) * 100 : 0;
+    
+    const progressFill = document.getElementById('socialProgressFill');
+    const progressCount = document.getElementById('socialProgressCount');
+    const verifyAllBtn = document.getElementById('socialVerifyAllBtn');
+    const reminder = document.getElementById('socialReminder');
+    
+    if (progressFill) progressFill.style.width = `${progressPercent}%`;
+    if (progressCount) progressCount.textContent = `${followedCount}/${totalLinks} Links Followed`;
+    
+    // Show/hide verify all button
+    if (verifyAllBtn) {
+        verifyAllBtn.style.display = followedCount === totalLinks && totalLinks > 0 ? 'block' : 'none';
+    }
+    
+    // Update reminder message
+    if (reminder) {
+        const remaining = totalLinks - followedCount;
+        if (remaining === 0) {
+            reminder.innerHTML = `<i class="fas fa-trophy"></i> <span>Congratulations! You've followed all our social media pages!</span>`;
+            reminder.style.background = '#e8f5e9';
+            reminder.style.color = '#2e7d32';
+        } else {
+            reminder.innerHTML = `<i class="fas fa-bell"></i> <span>Please follow ${remaining} more ${remaining === 1 ? 'page' : 'pages'} to complete all tasks</span>`;
+            reminder.style.background = '#fff3e0';
+            reminder.style.color = '#e65100';
+        }
+    }
+}
+
+/**
+ * Follow social link and verify
+ */
+async function followSocialLinkAndVerify(linkId, url) {
+    console.log('Following social link:', linkId);
+    
+    // Open link in new tab
+    window.open(url, '_blank', 'noopener,noreferrer');
+    
+    // Show confirmation dialog after short delay
+    setTimeout(async () => {
+        const confirmed = confirm(`Have you successfully followed/followed this page?\n\nClick OK to verify.`);
+        
+        if (confirmed) {
+            await verifySocialLink(linkId);
+        } else {
+            showToast('Please follow the page and try again', 'warning');
+        }
+    }, 1500);
+}
+
+/**
+ * Verify a single social link
+ */
+async function verifySocialLink(linkId) {
+    if (!currentUser) return;
+    
+    if (userFollowedLinksList.includes(linkId)) {
+        showToast('You have already verified this link!', 'warning');
+        return;
+    }
+    
+    showLoading('Verifying...');
+    
+    try {
+        const updatedFollowed = [...userFollowedLinksList, linkId];
+        
+        await db.collection('users').doc(currentUser.uid).update({
+            followedSocialLinks: updatedFollowed,
+            updatedAt: new Date().toISOString()
+        });
+        
+        userFollowedLinksList = updatedFollowed;
+        
+        const link = socialLinksList.find(l => l.id === linkId);
+        
+        // Add to history
+        await db.collection('users').doc(currentUser.uid).update({
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'social',
+                description: `Followed ${link?.title || 'social media page'}`,
+                amount: 0,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: { linkId: linkId, platform: link?.title }
+            })
+        });
+        
+        hideLoading();
+        showToast(`✅ Verified! You followed ${link?.title || 'the page'}`, 'success');
+        
+        // Re-render modal
+        renderSocialLinksModal();
+        
+        // Check if all links are now followed
+        if (hasFollowedAllSocialLinks()) {
+            showToast('🎉 Congratulations! You have followed all our social media pages!', 'success');
+            stopSocialPopupInterval();
+            
+            setTimeout(() => {
+                if (isSocialModalVisible) {
+                    closeSocialLinksModal();
+                }
+            }, 2000);
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error verifying social link:', error);
+        showToast('Error verifying. Please try again.', 'error');
+    }
+}
+
+/**
+ * Verify all social links at once
+ */
+async function verifyAllSocialLinks() {
+    const unverifiedLinks = socialLinksList.filter(link => !userFollowedLinksList.includes(link.id));
+    
+    if (unverifiedLinks.length === 0) {
+        showToast('All links are already verified!', 'success');
+        closeSocialLinksModal();
+        return;
+    }
+    
+    if (!confirm(`⚠️ This will mark ALL ${unverifiedLinks.length} unverified links as followed.\n\nOnly do this if you have actually followed all pages.\n\nContinue?`)) {
+        return;
+    }
+    
+    showLoading('Verifying all links...');
+    
+    try {
+        const allLinkIds = socialLinksList.map(link => link.id);
+        
+        await db.collection('users').doc(currentUser.uid).update({
+            followedSocialLinks: allLinkIds,
+            updatedAt: new Date().toISOString()
+        });
+        
+        userFollowedLinksList = allLinkIds;
+        
+        hideLoading();
+        showToast('✅ All social links verified successfully!', 'success');
+        
+        renderSocialLinksModal();
+        stopSocialPopupInterval();
+        
+        setTimeout(() => {
+            if (isSocialModalVisible) {
+                closeSocialLinksModal();
+            }
+        }, 1500);
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error verifying all links:', error);
+        showToast('Error verifying links', 'error');
+    }
+}
+
+// ============================================
+// ADMIN SOCIAL LINKS MANAGEMENT
+// ============================================
 
 /**
  * Open admin social links modal
  */
-async function openAdminSocialLinksModal() {
-    console.log('Opening admin social links modal...');
+function openAdminSocialLinksModal() {
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'superadmin')) {
+        showToast('Access denied. Admin only.', 'error');
+        return;
+    }
     
-    // Load social links from Firestore
-    await loadAdminSocialLinksData();
+    loadAdminSocialLinksTable();
     
-    // Show modal
     const modal = document.getElementById('adminSocialLinksModal');
     if (modal) {
         modal.classList.add('show');
         document.body.style.overflow = 'hidden';
-    } else {
-        console.error('adminSocialLinksModal not found');
-        showToast('Modal not found. Please refresh the page.', 'error');
     }
 }
 
@@ -24203,157 +23948,1011 @@ function closeAdminSocialLinksModal() {
 }
 
 /**
- * Load admin social links data from Firestore
+ * Load admin social links table
  */
-async function loadAdminSocialLinksData() {
-    console.log('Loading admin social links data...');
+async function loadAdminSocialLinksTable() {
+    const tbody = document.getElementById('adminSocialLinksBody');
+    if (!tbody) return;
     
     try {
-        const doc = await db.collection('settings').doc('socialLinks').get();
+        const snapshot = await db.collection('socialLinks')
+            .orderBy('order', 'asc')
+            .get();
         
-        if (doc.exists && doc.data().links && Array.isArray(doc.data().links)) {
-            adminSocialLinks = doc.data().links.filter(link => link && link.id);
-        } else {
-            adminSocialLinks = [];
+        const links = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        // Update stats
+        document.getElementById('adminTotalLinks').textContent = links.length;
+        document.getElementById('adminActiveLinks').textContent = links.filter(l => l.status === 'active').length;
+        
+        if (links.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No social links found. Click "Add New Link" to create one.</td></tr>';
+            return;
         }
         
-        // Sort by order
-        adminSocialLinks.sort((a, b) => (a.order || 999) - (b.order || 999));
+        let html = '';
+        links.forEach(link => {
+            const iconClass = link.icon || 'fab fa-facebook-f';
+            const statusClass = link.status === 'active' ? 'success' : 'danger';
+            const statusText = link.status === 'active' ? 'Active' : 'Inactive';
+            
+            html += `
+                <tr>
+                    <td><i class="${iconClass}" style="font-size: 22px; color: #667eea;"></i></td>
+                    <td><strong>${escapeHtml(link.title)}</strong></td>
+                    <td>${escapeHtml(link.description?.substring(0, 40) || '-')}</td>
+                    <td><a href="${escapeHtml(link.url)}" target="_blank" class="link-preview">${escapeHtml(link.url.substring(0, 35))}...</a></td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td class="action-buttons">
+                        <button class="action-btn small" onclick="editSocialLink('${link.id}')" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn small danger" onclick="deleteSocialLink('${link.id}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
         
-        renderAdminSocialLinksGrid();
-        updateAdminSocialLinksStats();
-        
-        console.log(`Loaded ${adminSocialLinks.length} social links`);
+        tbody.innerHTML = html;
         
     } catch (error) {
-        console.error('Error loading social links:', error);
-        adminSocialLinks = [];
-        renderAdminSocialLinksGrid();
-        showToast('Error loading social links', 'error');
+        console.error('Error loading admin social links:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">Error loading links</td></tr>';
     }
 }
 
 /**
- * Render admin social links grid
+ * Show add social link form
  */
-function renderAdminSocialLinksGrid() {
-    const container = document.getElementById('adminSocialLinksGrid');
-    if (!container) return;
+function showAddSocialLinkForm() {
+    document.getElementById('socialLinkFormTitle').textContent = 'Add Social Link';
+    document.getElementById('socialLinkId').value = '';
+    document.getElementById('socialLinkIcon').value = 'fab fa-facebook-f';
+    document.getElementById('socialLinkTitle').value = '';
+    document.getElementById('socialLinkDescription').value = '';
+    document.getElementById('socialLinkUrl').value = '';
+    document.getElementById('socialLinkStatus').value = 'active';
+    document.getElementById('socialLinkOrder').value = '0';
     
-    if (adminSocialLinks.length === 0) {
-        container.innerHTML = `
-            <div class="no-data" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
-                <i class="fas fa-share-alt" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
-                <p>No social links configured</p>
-                <button onclick="showAddSocialLinkFormAdmin()" class="auth-btn" style="margin-top: 10px;">
-                    <i class="fas fa-plus"></i> Add Your First Link
-                </button>
-            </div>
-        `;
+    updateSocialIconPreview();
+    
+    document.getElementById('socialLinkFormModal').classList.add('show');
+}
+
+/**
+ * Edit social link
+ */
+async function editSocialLink(linkId) {
+    try {
+        const doc = await db.collection('socialLinks').doc(linkId).get();
+        if (!doc.exists) {
+            showToast('Link not found', 'error');
+            return;
+        }
+        
+        const link = doc.data();
+        
+        document.getElementById('socialLinkFormTitle').textContent = 'Edit Social Link';
+        document.getElementById('socialLinkId').value = linkId;
+        document.getElementById('socialLinkIcon').value = link.icon || 'fab fa-facebook-f';
+        document.getElementById('socialLinkTitle').value = link.title || '';
+        document.getElementById('socialLinkDescription').value = link.description || '';
+        document.getElementById('socialLinkUrl').value = link.url || '';
+        document.getElementById('socialLinkStatus').value = link.status || 'active';
+        document.getElementById('socialLinkOrder').value = link.order || 0;
+        
+        updateSocialIconPreview();
+        
+        document.getElementById('socialLinkFormModal').classList.add('show');
+        
+    } catch (error) {
+        console.error('Error loading link for edit:', error);
+        showToast('Error loading link', 'error');
+    }
+}
+
+/**
+ * Update social icon preview
+ */
+function updateSocialIconPreview() {
+    const iconClass = document.getElementById('socialLinkIcon').value;
+    const preview = document.getElementById('socialIconPreview');
+    if (preview) {
+        preview.innerHTML = `<i class="${iconClass}"></i>`;
+    }
+}
+
+/**
+ * Save social link (create or update)
+ */
+async function saveSocialLink() {
+    const id = document.getElementById('socialLinkId').value;
+    const icon = document.getElementById('socialLinkIcon').value;
+    const title = document.getElementById('socialLinkTitle').value.trim();
+    const description = document.getElementById('socialLinkDescription').value.trim();
+    const url = document.getElementById('socialLinkUrl').value.trim();
+    const status = document.getElementById('socialLinkStatus').value;
+    const order = parseInt(document.getElementById('socialLinkOrder').value) || 0;
+    
+    if (!title || !url) {
+        showToast('Please fill in all required fields', 'error');
         return;
     }
     
-    let html = '';
-    adminSocialLinks.forEach(link => {
-        const statusClass = link.isActive ? 'success' : 'danger';
-        const statusText = link.isActive ? 'Active' : 'Inactive';
-        const requiredBadge = link.isRequired ? 
-            '<span class="badge warning" style="background: #FF9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">Required</span>' : 
-            '<span class="badge info" style="background: #9E9E9E; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">Optional</span>';
+    showLoading('Saving...');
+    
+    try {
+        const linkData = {
+            icon: icon,
+            title: title,
+            description: description || '',
+            url: url,
+            status: status,
+            order: order,
+            updatedAt: new Date().toISOString()
+        };
         
-        html += `
-            <div class="social-link-card" style="background: white; border-radius: 12px; padding: 15px; border: 1px solid #e0e0e0;">
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px;">
-                    <div style="width: 50px; height: 50px; background: ${link.color || '#4CAF50'}20; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                        <i class="${link.icon || 'fab fa-link'}" style="color: ${link.color || '#4CAF50'}; font-size: 24px;"></i>
-                    </div>
-                    <div style="flex: 1;">
-                        <h4 style="margin: 0 0 5px 0;">${escapeHtml(link.platform)}</h4>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            ${requiredBadge}
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                            <span style="font-size: 12px; color: #666;">Points: ${link.rewardPoints || 100}</span>
-                            <span style="font-size: 12px; color: #666;">Order: ${link.order || 0}</span>
-                        </div>
-                    </div>
-                </div>
-                <div style="margin-bottom: 12px;">
-                    <p style="margin: 0 0 5px 0; font-size: 12px; color: #666; word-break: break-all;">
-                        <strong>URL:</strong> ${escapeHtml(link.url)}
-                    </p>
-                    ${link.label ? `<p style="margin: 0; font-size: 12px; color: #666;"><strong>Label:</strong> ${escapeHtml(link.label)}</p>` : ''}
-                </div>
-                <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                    <button onclick="editAdminSocialLink('${link.id}')" class="action-btn small" title="Edit">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button onclick="toggleAdminSocialLinkStatus('${link.id}')" class="action-btn small ${link.isActive ? 'warning' : 'success'}" title="${link.isActive ? 'Deactivate' : 'Activate'}">
-                        <i class="fas ${link.isActive ? 'fa-ban' : 'fa-check'}"></i> ${link.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button onclick="deleteAdminSocialLink('${link.id}')" class="action-btn small danger" title="Delete">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </div>
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
-}
-
-/**
- * Update admin social links statistics
- */
-function updateAdminSocialLinksStats() {
-    const totalLinks = adminSocialLinks.length;
-    const activeLinks = adminSocialLinks.filter(l => l.isActive === true).length;
-    const totalPoints = adminSocialLinks.reduce((sum, l) => sum + (l.rewardPoints || 0), 0);
-    
-    const totalEl = document.getElementById('adminTotalSocialLinks');
-    const activeEl = document.getElementById('adminActiveSocialLinks');
-    const pointsEl = document.getElementById('adminTotalPoints');
-    
-    if (totalEl) totalEl.textContent = totalLinks;
-    if (activeEl) activeEl.textContent = activeLinks;
-    if (pointsEl) pointsEl.textContent = totalPoints;
-}
-
-/**
- * Show add social link form (admin)
- */
-function showAddSocialLinkFormAdmin() {
-    console.log('Showing add social link form');
-    
-    // Reset form
-    document.getElementById('adminSocialLinkId').value = '';
-    document.getElementById('adminPlatformName').value = '';
-    document.getElementById('adminPlatformUrl').value = '';
-    document.getElementById('adminPlatformLabel').value = '';
-    document.getElementById('adminPlatformIcon').value = 'fab fa-whatsapp';
-    document.getElementById('adminPlatformColor').value = '#4CAF50';
-    document.getElementById('adminRewardPoints').value = '100';
-    document.getElementById('adminDisplayOrder').value = adminSocialLinks.length + 1;
-    document.getElementById('adminIsRequired').checked = false;
-    document.getElementById('adminIsActive').checked = true;
-    
-    document.getElementById('adminSocialLinkModalTitle').textContent = 'Add Social Link';
-    
-    // Show modal
-    const modal = document.getElementById('adminSocialLinkFormModal');
-    if (modal) {
-        modal.classList.add('show');
-        document.body.style.overflow = 'hidden';
-    } else {
-        console.error('adminSocialLinkFormModal not found');
-        showToast('Form modal not found', 'error');
+        if (id) {
+            await db.collection('socialLinks').doc(id).update(linkData);
+            showToast('Social link updated successfully', 'success');
+        } else {
+            linkData.createdAt = new Date().toISOString();
+            await db.collection('socialLinks').add(linkData);
+            showToast('Social link added successfully', 'success');
+        }
+        
+        closeSocialLinkFormModal();
+        
+    } catch (error) {
+        console.error('Error saving social link:', error);
+        showToast('Error saving link', 'error');
+    } finally {
+        hideLoading();
     }
 }
 
 /**
- * Close admin social link form modal
+ * Delete social link
  */
-function closeAdminSocialLinkFormModal() {
-    const modal = document.getElementById('adminSocialLinkFormModal');
+async function deleteSocialLink(linkId) {
+    if (!confirm('Are you sure you want to delete this social link?\n\nUsers will no longer need to follow it.')) return;
+    
+    showLoading('Deleting...');
+    
+    try {
+        await db.collection('socialLinks').doc(linkId).delete();
+        showToast('Social link deleted', 'success');
+        await loadAdminSocialLinksTable();
+        
+    } catch (error) {
+        console.error('Error deleting social link:', error);
+        showToast('Error deleting link', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Close social link form modal
+ */
+function closeSocialLinkFormModal() {
+    document.getElementById('socialLinkFormModal').classList.remove('show');
+}
+
+/**
+ * Add social links button to user menu
+ */
+function addSocialLinksToUserMenu() {
+    const userMenu = document.getElementById('userMenu');
+    if (!userMenu) return;
+    
+    if (document.getElementById('userSocialLinksBtn')) return;
+    
+    const settingsItem = userMenu.querySelector('a[onclick="showUserSettings()"]');
+    
+    const socialBtn = document.createElement('a');
+    socialBtn.id = 'userSocialLinksBtn';
+    socialBtn.onclick = () => openSocialLinksModal();
+    socialBtn.innerHTML = `
+        <i class="fab fa-superpowers"></i>
+        <span>Social Links</span>
+        <span class="social-notification-badge" id="socialNotificationBadge" style="display: none;">!</span>
+    `;
+    
+    if (settingsItem) {
+        userMenu.insertBefore(socialBtn, settingsItem);
+    } else {
+        userMenu.appendChild(socialBtn);
+    }
+}
+
+/**
+ * Update social notification badge
+ */
+async function updateSocialNotificationBadge() {
+    if (!currentUser) return;
+    
+    await loadUserFollowedStatus();
+    const unfollowedCount = getUnfollowedLinksCount();
+    const badge = document.getElementById('socialNotificationBadge');
+    
+    if (badge) {
+        if (unfollowedCount > 0) {
+            badge.style.display = 'inline-block';
+            badge.textContent = unfollowedCount;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Add social links to admin sidebar
+ */
+function addSocialLinksToAdminSidebar() {
+    const adminSidebar = document.getElementById('adminSidebar');
+    if (!adminSidebar) return;
+    
+    const menuList = adminSidebar.querySelector('.sidebar-menu');
+    if (!menuList) return;
+    
+    if (document.getElementById('adminSocialLinksMenuItem')) return;
+    
+    const socialItem = document.createElement('li');
+    socialItem.id = 'adminSocialLinksMenuItem';
+    socialItem.onclick = () => openAdminSocialLinksModal();
+    socialItem.innerHTML = `
+        <i class="fab fa-superpowers"></i>
+        <span>Social Links</span>
+    `;
+    
+    const announcementsItem = menuList.querySelector('li[onclick="switchAdminTab(\'announcements\')"]');
+    if (announcementsItem) {
+        menuList.insertBefore(socialItem, announcementsItem.nextSibling);
+    } else {
+        menuList.appendChild(socialItem);
+    }
+}
+
+// ============================================
+// INTEGRATION WITH EXISTING FUNCTIONS
+// ============================================
+
+// Override showUserDashboard
+const originalShowUserDashboardFunc = window.showUserDashboard;
+window.showUserDashboard = async function() {
+    if (originalShowUserDashboardFunc) await originalShowUserDashboardFunc();
+    
+    // Initialize social links system
+    await initSocialLinksSystem();
+    await loadUserFollowedStatus();
+    addSocialLinksToUserMenu();
+    await updateSocialNotificationBadge();
+    
+    // Show modal after 2 seconds if not all links followed
+    if (!hasFollowedAllSocialLinks() && socialLinksList.length > 0) {
+        setTimeout(() => {
+            console.log('Auto-showing social modal after login (2 second delay)');
+            openSocialLinksModal();
+        }, 2000);
+    }
+};
+
+// Override handleLogin
+const originalHandleLoginFunc = window.handleLogin;
+window.handleLogin = async function() {
+    await originalHandleLoginFunc();
+    // Social links will be handled by auth state observer
+};
+
+// Override handleSignup
+const originalHandleSignupFunc = window.handleSignup;
+window.handleSignup = async function() {
+    await originalHandleSignupFunc();
+    // Social links will be handled by auth state observer
+};
+
+// Override logout
+const originalLogoutFunc = window.logout;
+window.logout = async function() {
+    stopSocialPopupInterval();
+    if (originalLogoutFunc) await originalLogoutFunc();
+};
+
+// Override showAdminDashboard
+const originalShowAdminDashboardFunc = window.showAdminDashboard;
+window.showAdminDashboard = function() {
+    if (originalShowAdminDashboardFunc) originalShowAdminDashboardFunc();
+    setTimeout(() => {
+        addSocialLinksToAdminSidebar();
+    }, 500);
+};
+
+// Initialize on auth state change - add to your auth.onAuthStateChanged
+// Add this code inside your auth.onAuthStateChanged after setting currentUser
+/*
+if (user) {
+    // ... existing code ...
+    
+    // Initialize social links system
+    await initSocialLinksSystem();
+    await loadUserFollowedStatus();
+    addSocialLinksToUserMenu();
+    await updateSocialNotificationBadge();
+    
+    // Show modal after 2 seconds if not all links followed
+    if (!hasFollowedAllSocialLinks() && socialLinksList.length > 0) {
+        setTimeout(() => {
+            openSocialLinksModal();
+        }, 2000);
+    }
+}
+*/
+
+// Make functions globally available
+window.openSocialLinksModal = openSocialLinksModal;
+window.closeSocialLinksModal = closeSocialLinksModal;
+window.followSocialLinkAndVerify = followSocialLinkAndVerify;
+window.verifySocialLink = verifySocialLink;
+window.verifyAllSocialLinks = verifyAllSocialLinks;
+window.openAdminSocialLinksModal = openAdminSocialLinksModal;
+window.closeAdminSocialLinksModal = closeAdminSocialLinksModal;
+window.showAddSocialLinkForm = showAddSocialLinkForm;
+window.editSocialLink = editSocialLink;
+window.saveSocialLink = saveSocialLink;
+window.deleteSocialLink = deleteSocialLink;
+window.closeSocialLinkFormModal = closeSocialLinkFormModal;
+window.updateSocialIconPreview = updateSocialIconPreview;
+
+console.log('✅ Social Links System Loaded - Auto popup every 3 minutes');
+
+// ============================================
+// COMPLETE WORKING FIRST DEPOSIT BONUS SYSTEM
+// ============================================
+
+/**
+ * GIVE FIRST DEPOSIT BONUS TO REFERRER
+ * Called when a user makes their first deposit
+ * @param {string} userId - The user who made the deposit
+ * @param {number} depositAmount - The amount deposited
+ * @returns {Promise<Object>} - Result object
+ */
+async function giveFirstDepositBonus(userId, depositAmount) {
+    console.log('=========================================');
+    console.log('🎁 GIVE FIRST DEPOSIT BONUS - STARTED');
+    console.log('User ID:', userId);
+    console.log('Deposit Amount:', depositAmount);
+    console.log('=========================================');
+    
+    const result = {
+        success: false,
+        bonusAmount: 0,
+        message: '',
+        referrerId: null,
+        referrerName: null
+    };
+    
+    try {
+        // STEP 1: Get the user who made the deposit
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            result.message = 'User not found';
+            console.error('❌', result.message);
+            return result;
+        }
+        
+        const userData = userDoc.data();
+        console.log('User:', userData.username);
+        console.log('Email:', userData.email);
+        
+        // STEP 2: Check if user has a referrer
+        if (!userData.referredBy) {
+            result.message = 'No referrer found - skipping bonus';
+            console.log('ℹ️', result.message);
+            return result;
+        }
+        
+        const referrerId = userData.referredBy;
+        result.referrerId = referrerId;
+        console.log('Referrer ID:', referrerId);
+        
+        // STEP 3: Check if bonus already given
+        if (userData.firstDepositBonusGiven === true) {
+            result.message = 'Bonus already given to referrer';
+            console.log('ℹ️', result.message);
+            return result;
+        }
+        
+        // STEP 4: Calculate 10% bonus
+        const bonusAmount = depositAmount * 0.10;
+        if (bonusAmount <= 0) {
+            result.message = 'Bonus amount is zero';
+            console.log('ℹ️', result.message);
+            return result;
+        }
+        
+        result.bonusAmount = bonusAmount;
+        console.log('Bonus Amount:', formatMoney(bonusAmount));
+        
+        // STEP 5: Get referrer data
+        const referrerRef = db.collection('users').doc(referrerId);
+        const referrerDoc = await referrerRef.get();
+        
+        if (!referrerDoc.exists) {
+            result.message = 'Referrer document not found';
+            console.error('❌', result.message);
+            return result;
+        }
+        
+        const referrerData = referrerDoc.data();
+        result.referrerName = referrerData.username;
+        console.log('Referrer:', referrerData.username);
+        console.log('Current referralBalance:', referrerData.referralBalance);
+        
+        // STEP 6: Create batch operation for atomic updates
+        const batch = db.batch();
+        
+        // 6a: Add bonus to referrer's referralBalance
+        batch.update(referrerRef, {
+            referralBalance: firebase.firestore.FieldValue.increment(bonusAmount),
+            totalEarned: firebase.firestore.FieldValue.increment(bonusAmount),
+            'referralEarnings.level1': firebase.firestore.FieldValue.increment(bonusAmount),
+            updatedAt: new Date().toISOString()
+        });
+        
+        // 6b: Add to referrer's history
+        batch.update(referrerRef, {
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'first_deposit_bonus',
+                description: `🎁 First Deposit Bonus (10%) from ${userData.username} - Deposit: ${formatMoney(depositAmount)}`,
+                amount: bonusAmount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    referralId: userId,
+                    referralUsername: userData.username,
+                    depositAmount: depositAmount,
+                    bonusPercentage: 10,
+                    timestamp: new Date().toISOString()
+                }
+            })
+        });
+        
+        // 6c: Add notification to referrer
+        batch.update(referrerRef, {
+            notifications: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                title: '💰 First Deposit Bonus!',
+                message: `Your referral ${userData.username} made their first deposit of ${formatMoney(depositAmount)}! You earned ${formatMoney(bonusAmount)} bonus!`,
+                type: 'success',
+                read: false,
+                date: new Date().toISOString()
+            })
+        });
+        
+        // 6d: Mark bonus as given on user's document
+        batch.update(db.collection('users').doc(userId), {
+            firstDepositBonusGiven: true,
+            firstDepositBonusAmount: bonusAmount,
+            firstDepositBonusPaidTo: referrerId,
+            firstDepositBonusPaidAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
+        
+        // 6e: Add to user's history
+        batch.update(db.collection('users').doc(userId), {
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'referral_bonus_given',
+                description: `Your first deposit of ${formatMoney(depositAmount)} gave your referrer ${formatMoney(bonusAmount)} bonus`,
+                amount: depositAmount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    referrerId: referrerId,
+                    referrerName: referrerData.username,
+                    bonusAmount: bonusAmount,
+                    bonusPercentage: 10
+                }
+            })
+        });
+        
+        // 6f: Update referrer's referrals array
+        const referrals = referrerData.referrals || [];
+        let found = false;
+        
+        for (let i = 0; i < referrals.length; i++) {
+            if (referrals[i].userId === userId || referrals[i].username === userData.username) {
+                referrals[i].firstDepositAmount = depositAmount;
+                referrals[i].firstDepositBonus = bonusAmount;
+                referrals[i].firstDepositDate = new Date().toISOString();
+                referrals[i].firstDepositBonusGiven = true;
+                referrals[i].firstDepositBonusPaidAt = new Date().toISOString();
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            referrals.push({
+                userId: userId,
+                username: userData.username,
+                level: 1,
+                date: userData.createdAt || new Date().toISOString(),
+                commission: 0,
+                firstDepositAmount: depositAmount,
+                firstDepositBonus: bonusAmount,
+                firstDepositDate: new Date().toISOString(),
+                firstDepositBonusGiven: true,
+                firstDepositBonusPaidAt: new Date().toISOString()
+            });
+        }
+        
+        batch.update(referrerRef, { referrals: referrals });
+        
+        // STEP 7: Commit all updates
+        await batch.commit();
+        
+        result.success = true;
+        result.message = `Successfully added ${formatMoney(bonusAmount)} to ${referrerData.username}`;
+        
+        console.log('✅ SUCCESS!');
+        console.log(`   Bonus: ${formatMoney(bonusAmount)} added to ${referrerData.username}`);
+        console.log(`   New referralBalance: ${(referrerData.referralBalance || 0) + bonusAmount}`);
+        console.log('=========================================');
+        
+        // Show notification to referrer if online
+        if (currentUser && currentUser.uid === referrerId) {
+            setTimeout(() => {
+                showToast(`🎉 You earned ${formatMoney(bonusAmount)} from ${userData.username}'s first deposit!`, 'success');
+            }, 500);
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ ERROR in giveFirstDepositBonus:', error);
+        result.message = `Error: ${error.message}`;
+        return result;
+    }
+}
+
+/**
+ * APPROVE DEPOSIT WITH AUTO FIRST DEPOSIT BONUS
+ * This is the main function to call when approving a deposit
+ */
+async function approveDepositWithBonus(depositId) {
+    console.log('=========================================');
+    console.log('📝 APPROVE DEPOSIT WITH BONUS CHECK');
+    console.log('Deposit ID:', depositId);
+    console.log('=========================================');
+    
+    // Find the deposit
+    let deposit = null;
+    
+    // Try to find in deposits array
+    if (deposits && deposits.length > 0) {
+        deposit = deposits.find(d => d.id === depositId);
+    }
+    
+    // If not found, fetch from Firestore
+    if (!deposit) {
+        try {
+            const depositDoc = await db.collection('deposits').doc(depositId).get();
+            if (depositDoc.exists) {
+                deposit = { id: depositDoc.id, ...depositDoc.data() };
+            }
+        } catch (error) {
+            console.error('Error fetching deposit:', error);
+        }
+    }
+    
+    if (!deposit) {
+        showToast('Deposit not found', 'error');
+        return;
+    }
+    
+    if (deposit.status !== 'pending') {
+        showToast('Deposit already processed', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Approve deposit of ${formatMoney(deposit.amount)} for ${deposit.username}?\n\nThis will also check for first deposit bonus (10% to referrer).`)) {
+        return;
+    }
+    
+    showLoading('Processing deposit approval...');
+    
+    try {
+        // STEP 1: Check if this is user's first deposit
+        const previousDeposits = await db.collection('deposits')
+            .where('userId', '==', deposit.userId)
+            .where('status', '==', 'completed')
+            .get();
+        
+        const isFirstDeposit = previousDeposits.size === 0;
+        console.log(`Is first deposit: ${isFirstDeposit}`);
+        console.log(`Previous deposits count: ${previousDeposits.size}`);
+        
+        // STEP 2: Update deposit status
+        await db.collection('deposits').doc(depositId).update({
+            status: 'completed',
+            approvedAt: new Date().toISOString(),
+            approvedBy: currentUser?.uid || 'admin',
+            isFirstDeposit: isFirstDeposit,
+            updatedAt: new Date().toISOString()
+        });
+        
+        // STEP 3: Update user's balance
+        const userRef = db.collection('users').doc(deposit.userId);
+        
+        await userRef.update({
+            balance: firebase.firestore.FieldValue.increment(deposit.amount),
+            totalEarned: firebase.firestore.FieldValue.increment(deposit.amount),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'deposit',
+                description: `Deposit approved - ${deposit.method} - Ref: ${deposit.transactionReference || deposit.transactionCode || 'N/A'}`,
+                amount: deposit.amount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    depositId: depositId,
+                    approvedBy: currentUser?.username || 'Admin',
+                    isFirstDeposit: isFirstDeposit
+                }
+            })
+        });
+        
+        // STEP 4: Send notification to user
+        await addNotification(
+            deposit.userId,
+            '✅ Deposit Approved',
+            `Your deposit of ${formatMoney(deposit.amount)} via ${deposit.method} has been approved and added to your balance.`,
+            'success'
+        );
+        
+        // STEP 5: PROCESS FIRST DEPOSIT BONUS
+        let bonusResult = null;
+        if (isFirstDeposit) {
+            console.log('🎯 FIRST DEPOSIT DETECTED! Processing referral bonus...');
+            bonusResult = await giveFirstDepositBonus(deposit.userId, deposit.amount);
+            
+            if (bonusResult && bonusResult.success) {
+                // Update deposit record with bonus info
+                await db.collection('deposits').doc(depositId).update({
+                    firstDepositBonusGiven: true,
+                    firstDepositBonusAmount: bonusResult.bonusAmount,
+                    firstDepositBonusPaidTo: bonusResult.referrerId,
+                    firstDepositBonusPaidAt: new Date().toISOString()
+                });
+                console.log('✅ Deposit record updated with bonus info');
+            } else {
+                console.log('⚠️ First deposit bonus not processed:', bonusResult?.message);
+            }
+        } else {
+            console.log('ℹ️ Not first deposit, skipping bonus');
+        }
+        
+        hideLoading();
+        
+        // Show success message
+        let successMessage = `✅ Deposit of ${formatMoney(deposit.amount)} approved successfully`;
+        if (bonusResult && bonusResult.success) {
+            successMessage += `\n🎁 Referrer earned ${formatMoney(bonusResult.bonusAmount)} first deposit bonus!`;
+        }
+        showToast(successMessage, 'success');
+        
+        // Reload data
+        await loadAdminData();
+        await loadDeposits();
+        
+        // If the current user made the deposit, refresh their data
+        if (currentUser && currentUser.uid === deposit.userId) {
+            await loadUserData();
+        }
+        
+        console.log('=========================================');
+        console.log('✅ DEPOSIT APPROVAL COMPLETED');
+        console.log('=========================================');
+        
+    } catch (error) {
+        hideLoading();
+        console.error('❌ Error approving deposit:', error);
+        showToast('Error approving deposit: ' + error.message, 'error');
+    }
+}
+
+/**
+ * CHECK AND FIX ALL MISSED FIRST DEPOSIT BONUSES
+ * Run this to find and fix any bonuses that were never given
+ */
+async function fixMissedFirstDepositBonuses() {
+    console.log('=========================================');
+    console.log('🔍 FIX MISSED FIRST DEPOSIT BONUSES');
+    console.log('=========================================');
+    
+    showLoading('Checking for missed first deposit bonuses...');
+    
+    const stats = {
+        totalUsersChecked: 0,
+        usersWithDeposits: 0,
+        usersWithReferrer: 0,
+        bonusesFixed: 0,
+        errors: 0,
+        totalBonusAmount: 0
+    };
+    
+    const fixedUsers = [];
+    const errorUsers = [];
+    
+    try {
+        // STEP 1: Get all completed deposits
+        const depositsSnapshot = await db.collection('deposits')
+            .where('status', '==', 'completed')
+            .get();
+        
+        console.log(`Total completed deposits: ${depositsSnapshot.size}`);
+        
+        // Group deposits by user
+        const userDeposits = new Map();
+        
+        depositsSnapshot.forEach(doc => {
+            const deposit = doc.data();
+            if (!userDeposits.has(deposit.userId)) {
+                userDeposits.set(deposit.userId, []);
+            }
+            userDeposits.get(deposit.userId).push({
+                id: doc.id,
+                amount: deposit.amount,
+                createdAt: deposit.createdAt || deposit.date,
+                isFirstDeposit: deposit.isFirstDeposit
+            });
+        });
+        
+        stats.usersWithDeposits = userDeposits.size;
+        console.log(`Users with deposits: ${stats.usersWithDeposits}`);
+        
+        // STEP 2: Process each user
+        for (const [userId, deposits] of userDeposits) {
+            stats.totalUsersChecked++;
+            console.log(`\n--- Checking user: ${userId} ---`);
+            
+            // Get user data
+            const userDoc = await db.collection('users').doc(userId).get();
+            if (!userDoc.exists) {
+                console.log(`User document not found`);
+                stats.errors++;
+                errorUsers.push({ userId, error: 'User document not found' });
+                continue;
+            }
+            
+            const userData = userDoc.data();
+            console.log(`Username: ${userData.username}`);
+            console.log(`Has referrer: ${userData.referredBy ? 'YES' : 'NO'}`);
+            console.log(`Bonus already given: ${userData.firstDepositBonusGiven === true ? 'YES' : 'NO'}`);
+            
+            // Skip if no referrer
+            if (!userData.referredBy) {
+                console.log(`Skipping - No referrer`);
+                continue;
+            }
+            
+            stats.usersWithReferrer++;
+            
+            // Skip if bonus already given
+            if (userData.firstDepositBonusGiven === true) {
+                console.log(`Skipping - Bonus already given`);
+                continue;
+            }
+            
+            // Sort deposits to get first deposit
+            deposits.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            const firstDeposit = deposits[0];
+            
+            console.log(`First deposit amount: ${formatMoney(firstDeposit.amount)}`);
+            console.log(`First deposit date: ${new Date(firstDeposit.createdAt).toLocaleString()}`);
+            
+            // Process the missed bonus
+            console.log(`Processing missed bonus...`);
+            const result = await giveFirstDepositBonus(userId, firstDeposit.amount);
+            
+            if (result.success) {
+                stats.bonusesFixed++;
+                stats.totalBonusAmount += result.bonusAmount;
+                fixedUsers.push({
+                    username: userData.username,
+                    userId: userId,
+                    depositAmount: firstDeposit.amount,
+                    bonusAmount: result.bonusAmount,
+                    referrerName: result.referrerName,
+                    referrerId: result.referrerId
+                });
+                console.log(`✅ BONUS FIXED: ${formatMoney(result.bonusAmount)} to ${result.referrerName}`);
+            } else {
+                stats.errors++;
+                errorUsers.push({
+                    username: userData.username,
+                    userId: userId,
+                    depositAmount: firstDeposit.amount,
+                    error: result.message
+                });
+                console.log(`❌ FAILED: ${result.message}`);
+            }
+        }
+        
+        hideLoading();
+        
+        // STEP 3: Show summary
+        showMissedBonusSummary(stats, fixedUsers, errorUsers);
+        
+        // STEP 4: Log audit
+        await logAudit('missed_bonus_check', 
+            `Checked ${stats.totalUsersChecked} users. Fixed ${stats.bonusesFixed} missed bonuses. Total bonus: ${formatMoney(stats.totalBonusAmount)}`, 
+            currentUser?.uid);
+        
+        console.log('\n📊 FINAL SUMMARY:');
+        console.log(`   Total users checked: ${stats.totalUsersChecked}`);
+        console.log(`   Users with deposits: ${stats.usersWithDeposits}`);
+        console.log(`   Users with referrers: ${stats.usersWithReferrer}`);
+        console.log(`   ✅ Bonuses fixed: ${stats.bonusesFixed}`);
+        console.log(`   ❌ Errors: ${stats.errors}`);
+        console.log(`   💰 Total bonus distributed: ${formatMoney(stats.totalBonusAmount)}`);
+        console.log('=========================================');
+        
+        showToast(`✅ Fixed ${stats.bonusesFixed} missed first deposit bonuses! Total: ${formatMoney(stats.totalBonusAmount)}`, 'success');
+        
+        return stats;
+        
+    } catch (error) {
+        hideLoading();
+        console.error('❌ Error in fixMissedFirstDepositBonuses:', error);
+        showToast('Error checking missed bonuses: ' + error.message, 'error');
+        return null;
+    }
+}
+
+/**
+ * Show summary of missed bonus check results
+ */
+function showMissedBonusSummary(stats, fixedUsers, errorUsers) {
+    let modal = document.getElementById('missedBonusSummaryModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'missedBonusSummaryModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content large">
+                <span class="close" onclick="closeMissedBonusSummaryModal()">&times;</span>
+                <h2><i class="fas fa-gift"></i> First Deposit Bonus - Fix Results</h2>
+                <div id="missedBonusSummaryContent"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    let html = `
+        <div class="missed-bonus-summary">
+            <div class="summary-stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Users Checked</span>
+                        <span class="stat-number">${stats.totalUsersChecked}</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Users with Deposits</span>
+                        <span class="stat-number">${stats.usersWithDeposits}</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔗</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Had Referrers</span>
+                        <span class="stat-number">${stats.usersWithReferrer}</span>
+                    </div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Bonuses Fixed</span>
+                        <span class="stat-number">${stats.bonusesFixed}</span>
+                    </div>
+                </div>
+                <div class="stat-card error">
+                    <div class="stat-icon">❌</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Errors</span>
+                        <span class="stat-number">${stats.errors}</span>
+                    </div>
+                </div>
+                <div class="stat-card total">
+                    <div class="stat-icon">💎</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Bonus</span>
+                        <span class="stat-number">${formatMoney(stats.totalBonusAmount)}</span>
+                    </div>
+                </div>
+            </div>
+    `;
+    
+    if (fixedUsers.length > 0) {
+        html += `
+            <div class="results-section success">
+                <h3><i class="fas fa-check-circle"></i> Successfully Fixed (${fixedUsers.length})</h3>
+                <div class="results-list">
+                    ${fixedUsers.map(u => `
+                        <div class="result-item success">
+                            <div class="result-user">
+                                <i class="fas fa-user"></i>
+                                <strong>${escapeHtml(u.username)}</strong>
+                            </div>
+                            <div class="result-details">
+                                <span>Deposit: ${formatMoney(u.depositAmount)}</span>
+                                <span>→ Bonus: ${formatMoney(u.bonusAmount)}</span>
+                                <span>→ Referrer: ${escapeHtml(u.referrerName)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    if (errorUsers.length > 0) {
+        html += `
+            <div class="results-section error">
+                <h3><i class="fas fa-exclamation-triangle"></i> Errors (${errorUsers.length})</h3>
+                <div class="results-list">
+                    ${errorUsers.map(u => `
+                        <div class="result-item error">
+                            <div class="result-user">
+                                <i class="fas fa-user"></i>
+                                <strong>${escapeHtml(u.username)}</strong>
+                            </div>
+                            <div class="result-details">
+                                <span>Deposit: ${formatMoney(u.depositAmount)}</span>
+                                <span class="error-msg">❌ ${escapeHtml(u.error)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    html += `
+            <div class="modal-actions">
+                <button onclick="closeMissedBonusSummaryModal()" class="auth-btn">Close</button>
+                <button onclick="exportMissedBonusReport()" class="auth-btn success">
+                    <i class="fas fa-download"></i> Export Report
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('missedBonusSummaryContent').innerHTML = html;
+    modal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Store data for export
+    window.lastMissedBonusData = { stats, fixedUsers, errorUsers };
+}
+
+/**
+ * Close missed bonus summary modal
+ */
+function closeMissedBonusSummaryModal() {
+    const modal = document.getElementById('missedBonusSummaryModal');
     if (modal) {
         modal.classList.remove('show');
         document.body.style.overflow = '';
@@ -24361,187 +24960,181 @@ function closeAdminSocialLinkFormModal() {
 }
 
 /**
- * Save admin social link (create or update)
+ * Export missed bonus report to CSV
  */
-async function saveAdminSocialLink() {
-    const id = document.getElementById('adminSocialLinkId').value;
-    const platform = document.getElementById('adminPlatformName').value.trim();
-    const url = document.getElementById('adminPlatformUrl').value.trim();
-    const label = document.getElementById('adminPlatformLabel').value.trim();
-    const icon = document.getElementById('adminPlatformIcon').value;
-    const color = document.getElementById('adminPlatformColor').value;
-    const rewardPoints = parseInt(document.getElementById('adminRewardPoints').value) || 100;
-    const order = parseInt(document.getElementById('adminDisplayOrder').value) || 1;
-    const isRequired = document.getElementById('adminIsRequired').checked;
-    const isActive = document.getElementById('adminIsActive').checked;
+function exportMissedBonusReport() {
+    if (!window.lastMissedBonusData) return;
     
-    if (!platform || !url) {
-        showToast('Please fill all required fields', 'error');
-        return;
-    }
+    const { stats, fixedUsers, errorUsers } = window.lastMissedBonusData;
     
-    showLoading('Saving social link...');
+    let csvContent = 'Report Type,Username,User ID,Deposit Amount,Bonus Amount,Referrer Name,Referrer ID,Status,Error\n';
     
-    try {
-        const linkData = {
-            id: id || `link_${Date.now()}`,
-            platform: platform,
-            url: url,
-            label: label || `Follow us on ${platform}`,
-            icon: icon,
-            color: color,
-            rewardPoints: rewardPoints,
-            order: order,
-            isRequired: isRequired,
-            isActive: isActive,
-            updatedAt: new Date().toISOString()
+    // Add fixed users
+    fixedUsers.forEach(u => {
+        csvContent += `Fixed,${u.username},${u.userId},${u.depositAmount},${u.bonusAmount},${u.referrerName},${u.referrerId},Success,\n`;
+    });
+    
+    // Add error users
+    errorUsers.forEach(u => {
+        csvContent += `Error,${u.username},${u.userId},${u.depositAmount},0,,,Failed,${u.error}\n`;
+    });
+    
+    // Add summary row
+    csvContent += `\nSUMMARY,,,,,,,,\n`;
+    csvContent += `Total Users Checked,${stats.totalUsersChecked},,,,,\n`;
+    csvContent += `Users with Deposits,${stats.usersWithDeposits},,,,,\n`;
+    csvContent += `Had Referrers,${stats.usersWithReferrer},,,,,\n`;
+    csvContent += `Bonuses Fixed,${stats.bonusesFixed},,,,,\n`;
+    csvContent += `Errors,${stats.errors},,,,,\n`;
+    csvContent += `Total Bonus Distributed,${stats.totalBonusAmount},,,,,\n`;
+    
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `first_deposit_bonus_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('Report exported successfully!', 'success');
+}
+
+/**
+ * Add admin button for first deposit bonus system
+ */
+function addFirstDepositBonusAdminButton() {
+    setTimeout(() => {
+        const adminDashboard = document.getElementById('adminDashboardTab');
+        if (!adminDashboard) return;
+        
+        if (document.getElementById('firstDepositBonusAdminBtn')) return;
+        
+        const buttonDiv = document.createElement('div');
+        buttonDiv.style.cssText = `
+            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        `;
+        
+        buttonDiv.innerHTML = `
+            <div>
+                <h3 style="color: white; margin: 0 0 5px 0;">
+                    <i class="fas fa-gift"></i> First Deposit Bonus System
+                </h3>
+                <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 13px;">
+                    Referrers automatically get 10% bonus when their referrals make first deposit
+                </p>
+            </div>
+            <button id="firstDepositBonusAdminBtn" style="background: white; color: #2E7D32; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px;">
+                <i class="fas fa-search"></i> Check & Fix Missed Bonuses
+            </button>
+        `;
+        
+        const btn = buttonDiv.querySelector('#firstDepositBonusAdminBtn');
+        btn.onclick = async () => {
+            if (confirm('This will check ALL users for missed first deposit bonuses and fix them. Continue?')) {
+                await fixMissedFirstDepositBonuses();
+            }
         };
         
-        if (id) {
-            // Update existing link
-            const index = adminSocialLinks.findIndex(l => l.id === id);
-            if (index !== -1) {
-                adminSocialLinks[index] = linkData;
-            }
+        const firstChild = adminDashboard.firstChild;
+        if (firstChild) {
+            adminDashboard.insertBefore(buttonDiv, firstChild);
         } else {
-            // Add new link
-            linkData.createdAt = new Date().toISOString();
-            adminSocialLinks.push(linkData);
+            adminDashboard.appendChild(buttonDiv);
         }
         
-        // Sort by order
-        adminSocialLinks.sort((a, b) => (a.order || 999) - (b.order || 999));
-        
-        // Save to Firestore
-        await db.collection('settings').doc('socialLinks').set({
-            links: adminSocialLinks,
-            updatedAt: new Date().toISOString(),
-            updatedBy: currentUser?.uid || 'admin'
-        });
-        
-        hideLoading();
-        showToast(`Social link ${id ? 'updated' : 'added'} successfully!`, 'success');
-        
-        closeAdminSocialLinkFormModal();
-        await loadAdminSocialLinksData(); // Refresh grid
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error saving social link:', error);
-        showToast('Error saving social link: ' + error.message, 'error');
-    }
+    }, 1000);
 }
 
 /**
- * Edit admin social link
+ * Get first deposit bonus status for a user
  */
-async function editAdminSocialLink(linkId) {
-    const link = adminSocialLinks.find(l => l.id === linkId);
-    if (!link) {
-        showToast('Link not found', 'error');
-        return;
-    }
-    
-    console.log('Editing link:', link);
-    
-    // Fill form
-    document.getElementById('adminSocialLinkId').value = link.id;
-    document.getElementById('adminPlatformName').value = link.platform;
-    document.getElementById('adminPlatformUrl').value = link.url;
-    document.getElementById('adminPlatformLabel').value = link.label || '';
-    document.getElementById('adminPlatformIcon').value = link.icon || 'fab fa-whatsapp';
-    document.getElementById('adminPlatformColor').value = link.color || '#4CAF50';
-    document.getElementById('adminRewardPoints').value = link.rewardPoints || 100;
-    document.getElementById('adminDisplayOrder').value = link.order || 1;
-    document.getElementById('adminIsRequired').checked = link.isRequired || false;
-    document.getElementById('adminIsActive').checked = link.isActive !== false;
-    
-    document.getElementById('adminSocialLinkModalTitle').textContent = 'Edit Social Link';
-    
-    // Show modal
-    const modal = document.getElementById('adminSocialLinkFormModal');
-    if (modal) {
-        modal.classList.add('show');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-/**
- * Toggle admin social link status (activate/deactivate)
- */
-async function toggleAdminSocialLinkStatus(linkId) {
-    const link = adminSocialLinks.find(l => l.id === linkId);
-    if (!link) return;
-    
-    const newStatus = !link.isActive;
-    const action = newStatus ? 'activate' : 'deactivate';
-    
-    if (!confirm(`Are you sure you want to ${action} ${link.platform}?`)) return;
-    
-    showLoading(`Updating status...`);
-    
+async function getFirstDepositBonusStatus(userId) {
     try {
-        link.isActive = newStatus;
-        link.updatedAt = new Date().toISOString();
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) return null;
         
-        // Save to Firestore
-        await db.collection('settings').doc('socialLinks').set({
-            links: adminSocialLinks,
-            updatedAt: new Date().toISOString(),
-            updatedBy: currentUser?.uid || 'admin'
-        });
+        const userData = userDoc.data();
         
-        hideLoading();
-        showToast(`${link.platform} ${action}d successfully!`, 'success');
+        // Get user's first deposit
+        const depositsSnapshot = await db.collection('deposits')
+            .where('userId', '==', userId)
+            .where('status', '==', 'completed')
+            .orderBy('createdAt', 'asc')
+            .limit(1)
+            .get();
         
-        await loadAdminSocialLinksData();
+        let firstDepositAmount = null;
+        let firstDepositDate = null;
         
+        if (!depositsSnapshot.empty) {
+            const firstDeposit = depositsSnapshot.docs[0].data();
+            firstDepositAmount = firstDeposit.amount;
+            firstDepositDate = firstDeposit.createdAt || firstDeposit.date;
+        }
+        
+        return {
+            hasReferrer: !!userData.referredBy,
+            referrerId: userData.referredBy || null,
+            hasMadeFirstDeposit: firstDepositAmount !== null,
+            firstDepositAmount: firstDepositAmount,
+            firstDepositDate: firstDepositDate,
+            bonusProcessed: userData.firstDepositBonusGiven || false,
+            bonusAmount: userData.firstDepositBonusAmount || 0,
+            bonusPaidTo: userData.firstDepositBonusPaidTo || null,
+            bonusPaidAt: userData.firstDepositBonusPaidAt || null
+        };
     } catch (error) {
-        hideLoading();
-        console.error('Error updating link status:', error);
-        showToast('Error updating status', 'error');
+        console.error('Error getting bonus status:', error);
+        return null;
     }
 }
 
-/**
- * Delete admin social link
- */
-async function deleteAdminSocialLink(linkId) {
-    const link = adminSocialLinks.find(l => l.id === linkId);
-    if (!link) return;
-    
-    if (!confirm(`Are you sure you want to permanently delete ${link.platform}?`)) return;
-    
-    showLoading('Deleting social link...');
-    
-    try {
-        adminSocialLinks = adminSocialLinks.filter(l => l.id !== linkId);
-        
-        // Save to Firestore
-        await db.collection('settings').doc('socialLinks').set({
-            links: adminSocialLinks,
-            updatedAt: new Date().toISOString(),
-            updatedBy: currentUser?.uid || 'admin'
-        });
-        
-        hideLoading();
-        showToast(`${link.platform} deleted successfully!`, 'success');
-        
-        await loadAdminSocialLinksData();
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error deleting social link:', error);
-        showToast('Error deleting link', 'error');
-    }
-}
+// ============================================
+// OVERRIDE EXISTING FUNCTIONS
+// ============================================
 
-// Expose admin social links functions
-window.openAdminSocialLinksModal = openAdminSocialLinksModal;
-window.closeAdminSocialLinksModal = closeAdminSocialLinksModal;
-window.showAddSocialLinkFormAdmin = showAddSocialLinkFormAdmin;
-window.closeAdminSocialLinkFormModal = closeAdminSocialLinkFormModal;
-window.saveAdminSocialLink = saveAdminSocialLink;
-window.editAdminSocialLink = editAdminSocialLink;
-window.toggleAdminSocialLinkStatus = toggleAdminSocialLinkStatus;
-window.deleteAdminSocialLink = deleteAdminSocialLink;
+// Replace the approveDeposit function
+window.approveDeposit = approveDepositWithBonus;
+
+// Make all functions globally available
+window.giveFirstDepositBonus = giveFirstDepositBonus;
+window.approveDepositWithBonus = approveDepositWithBonus;
+window.fixMissedFirstDepositBonuses = fixMissedFirstDepositBonuses;
+window.getFirstDepositBonusStatus = getFirstDepositBonusStatus;
+window.closeMissedBonusSummaryModal = closeMissedBonusSummaryModal;
+window.exportMissedBonusReport = exportMissedBonusReport;
+window.addFirstDepositBonusAdminButton = addFirstDepositBonusAdminButton;
+
+// Add button when admin dashboard loads
+const originalShowAdminDashboardForBonus = window.showAdminDashboard;
+window.showAdminDashboard = function() {
+    if (originalShowAdminDashboardForBonus) originalShowAdminDashboardForBonus();
+    addFirstDepositBonusAdminButton();
+};
+
+// Also add to switchAdminTab
+const originalSwitchAdminTabForBonus = window.switchAdminTab;
+window.switchAdminTab = function(tabName) {
+    if (originalSwitchAdminTabForBonus) originalSwitchAdminTabForBonus(tabName);
+    if (tabName === 'dashboard') {
+        setTimeout(() => addFirstDepositBonusAdminButton(), 500);
+    }
+};
+
+console.log('=========================================');
+console.log('✅ FIRST DEPOSIT BONUS SYSTEM LOADED');
+console.log('   - Referrers get 10% bonus on referral\'s first deposit');
+console.log('   - Auto processes when deposit is approved');
+console.log('   - Admin button to fix missed bonuses');
+console.log('=========================================');
