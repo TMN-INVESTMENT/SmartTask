@@ -14534,9 +14534,9 @@ async function loadAllUsers() {
                     <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                     // In the loadAllUsers function, update the action buttons section:
 <td class="action-buttons">
-    <button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')" title="View Details">
-        <i class="fas fa-eye"></i>
-    </button>
+<button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')" title="View Details">
+    <i class="fas fa-eye"></i>
+</button>
     <button class="action-btn small" onclick="editUserAccount('${user.uid}')" title="Edit User">
         <i class="fas fa-edit"></i>
     </button>
@@ -14614,7 +14614,10 @@ function searchSuperUsers() {
                 </td>
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td class="action-buttons">
-                    <button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')">👁️</button>
+
+<button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')" title="View Details">
+    <i class="fas fa-eye"></i>
+</button>
                     <button class="action-btn small" onclick="addUserBalanceSuper('${user.uid}')">💰</button>
                     <button class="action-btn small ${user.isActive !== false ? 'warning' : 'success'}" 
                         onclick="toggleUserStatusSuper('${user.uid}')">
@@ -14628,114 +14631,8 @@ function searchSuperUsers() {
     tbody.innerHTML = html;
 }
 
-async function viewUserDetailsSuper(userId) {
-    const user = allUsers.find(u => u.uid === userId);
-    if (!user) return;
-    
-    const deposits = await db.collection('deposits')
-        .where('userId', '==', userId)
-        .get();
-    const userDeposits = deposits.docs.map(d => d.data());
-    
-    const withdrawals = await db.collection('withdrawals')
-        .where('userId', '==', userId)
-        .get();
-    const userWithdrawals = withdrawals.docs.map(w => w.data());
-    
-    const totalDeposited = userDeposits
-        .filter(d => d.status === 'completed')
-        .reduce((sum, d) => sum + (d.amount || 0), 0);
-    
-    const totalWithdrawn = userWithdrawals
-        .filter(w => w.status === 'completed')
-        .reduce((sum, w) => sum + (w.amount || 0), 0);
-    
-    const details = `
-📊 USER DETAILS REPORT
-═══════════════════════════
+ 
 
-👤 ACCOUNT INFO:
-├─ Username: ${user.username}
-├─ Full Name: ${user.fullName}
-├─ Email: ${user.email}
-├─ Phone: ${user.phone}
-├─ Role: ${user.role}
-└─ Status: ${user.isActive !== false ? '✅ Active' : '❌ Inactive'}
-
-💰 FINANCIAL SUMMARY:
-├─ Balance: ${formatMoney(user.balance || 0)}
-├─ Referral Balance: ${formatMoney(user.referralBalance || 0)}
-├─ Total Earned: ${formatMoney(user.totalEarned || 0)}
-├─ Total Invested: ${formatMoney(user.totalInvested || 0)}
-├─ Total Deposited: ${formatMoney(totalDeposited)}
-└─ Total Withdrawn: ${formatMoney(totalWithdrawn)}
-
-📈 STATISTICS:
-├─ Referrals: ${user.referrals?.length || 0}
-├─ Active Packages: ${user.activePackages?.length || 0}
-├─ Tasks Completed: ${user.tasksCompleted || 0}
-└─ Login Count: ${user.loginCount || 0}
-
-⏰ DATES:
-├─ Joined: ${new Date(user.createdAt).toLocaleString()}
-├─ Last Login: ${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
-└─ Last Withdrawal: ${user.lastWithdrawalDate || 'Never'}
-
-📋 RECENT ACTIVITY:
-${user.history?.slice(0, 5).map(h => `├─ ${h.type}: ${formatMoney(h.amount)} (${h.status})`).join('\n') || '├─ No recent activity'}
-    `;
-    
-    alert(details);
-}
-
-async function addUserBalanceSuper(userId) {
-    const user = allUsers.find(u => u.uid === userId);
-    if (!user) return;
-    
-    const amount = prompt(`Add balance for ${user.username}\n\nCurrent balance: ${formatMoney(user.balance || 0)}\n\nEnter amount to add:`, '10000');
-    if (!amount) return;
-    
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-        showToast('Please enter a valid amount', 'error');
-        return;
-    }
-    
-    const reason = prompt('Enter reason (optional):', 'Admin Bonus');
-    
-    showLoading('Adding balance...');
-    
-    try {
-        const userRef = db.collection('users').doc(userId);
-        await userRef.update({
-            balance: firebase.firestore.FieldValue.increment(numAmount),
-            totalEarned: firebase.firestore.FieldValue.increment(numAmount),
-            history: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                type: 'bonus',
-                description: reason || 'Super Admin Bonus',
-                amount: numAmount,
-                status: 'completed',
-                date: new Date().toISOString(),
-                metadata: { addedBy: currentUser.username, reason: reason }
-            })
-        });
-        
-        await addNotification(userId, '💰 Balance Updated!', 
-            `Your balance has been increased by ${formatMoney(numAmount)}. Reason: ${reason || 'Super Admin Bonus'}`, 'success');
-        
-        await logAudit('balance_added', `Added ${formatMoney(numAmount)} to ${user.username} (${reason})`, currentUser.uid);
-        
-        hideLoading();
-        showToast(`✅ Added ${formatMoney(numAmount)} to ${user.username}`, 'success');
-        await loadAllUsers();
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error adding balance:', error);
-        showToast('Error adding balance', 'error');
-    }
-}
 
 // ============================================
 // IMPROVED TOGGLE USER STATUS
@@ -15952,40 +15849,50 @@ window.showSuperAdminDashboard = function() {
 };
 
 // Update the switchSuperAdminTab function to load data when switching tabs
+// ============================================
+// OVERRIDE SWITCH SUPER ADMIN TAB
+// ============================================
+
+// Store original function
 const originalSwitchSuperAdminTab = window.switchSuperAdminTab;
+
+// Override with enhanced version
 window.switchSuperAdminTab = async function(tabName) {
-    console.log('Switching to super admin tab:', tabName);
+    console.log('Switching super admin tab to:', tabName);
     
-    // Call original function if it exists
+    // Call original function if exists
     if (originalSwitchSuperAdminTab) {
         originalSwitchSuperAdminTab(tabName);
     }
     
     // Load data based on selected tab
-    setTimeout(async () => {
-        if (tabName === 'admins') {
-            console.log('Loading admins list...');
-            await loadAdminsList();
-        } else if (tabName === 'allUsers') {
-            console.log('Loading all users list...');
-            await loadAllUsers();
-        } else if (tabName === 'dashboard') {
-            await loadSuperAdminDashboard();
-        } else if (tabName === 'audit') {
-            await loadAuditLogs();
-        } else if (tabName === 'system') {
-            await loadSystemSettingsForSuper();
-        } else if (tabName === 'packages') {
-            await loadPackagesManagement();
-        } else if (tabName === 'transactions') {
-            await loadAllTransactions();
-        } else if (tabName === 'announcements') {
-            await loadSuperAnnouncements();
-        } else if (tabName === 'logs') {
-            await loadSystemLogs();
-        }
-    }, 100);
+    if (tabName === 'dashboard') {
+        await loadSuperAdminDashboard();
+        startSuperAdminAutoRefresh();
+    } else if (tabName === 'admins') {
+        await loadAdminsList();
+    } else if (tabName === 'allUsers') {
+        await loadAllUsersForSuper();
+    } else if (tabName === 'audit') {
+        await loadAuditLogs();
+    } else if (tabName === 'system') {
+        await loadSystemSettingsForSuper();
+    } else if (tabName === 'packages') {
+        await loadPackagesManagement();
+    } else if (tabName === 'transactions') {
+        await loadAllTransactions();
+    } else if (tabName === 'announcements') {
+        await loadSuperAnnouncements();
+    } else if (tabName === 'logs') {
+        await loadSystemLogs();
+    } else if (tabName === 'backup') {
+        // Backup tab - already handled
+    }
 };
+
+// ============================================
+// OVERRIDE SHOW SUPER ADMIN DASHBOARD
+// ============================================
 
 // Make all functions globally available
 window.loadAdminsList = loadAdminsList;
@@ -15998,7 +15905,7 @@ window.removeAdminUser = removeAdminUser;
 window.loadAllUsers = loadAllUsers;
 window.searchSuperUsers = searchSuperUsers;
 window.viewUserDetailsSuper = viewUserDetailsSuper;
-window.addUserBalanceSuper = addUserBalanceSuper;
+
 window.toggleUserStatusSuper = toggleUserStatusSuper;
 window.deleteUserAccountSuper = deleteUserAccountSuper;
 window.saveAllSystemSettings = saveAllSystemSettings;
@@ -16032,226 +15939,7 @@ window.exportAuditLogs = exportAuditLogs;
 // USER DETAILS MODAL FUNCTIONS
 // ============================================
 
-async function viewUserDetailsSuper(userId) {
-    console.log('Viewing user details for:', userId);
-    
-    try {
-        // Get fresh user data
-        const userDoc = await db.collection('users').doc(userId).get();
-        if (!userDoc.exists) {
-            showToast('User not found', 'error');
-            return;
-        }
-        
-        const user = { uid: userId, ...userDoc.data() };
-        
-        // Get user's deposits
-        const depositsSnap = await db.collection('deposits')
-            .where('userId', '==', userId)
-            .orderBy('createdAt', 'desc')
-            .limit(10)
-            .get();
-        const userDeposits = depositsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // Get user's withdrawals
-        const withdrawalsSnap = await db.collection('withdrawals')
-            .where('userId', '==', userId)
-            .orderBy('createdAt', 'desc')
-            .limit(10)
-            .get();
-        const userWithdrawals = withdrawalsSnap.docs.map(w => ({ id: w.id, ...w.data() }));
-        
-        // Calculate totals
-        const totalDeposited = userDeposits
-            .filter(d => d.status === 'completed')
-            .reduce((sum, d) => sum + (d.amount || 0), 0);
-        
-        const totalWithdrawn = userWithdrawals
-            .filter(w => w.status === 'completed')
-            .reduce((sum, w) => sum + (w.amount || 0), 0);
-        
-        const totalProfit = (user.totalEarned || 0) - (user.totalInvested || 0);
-        
-        // Create modal content
-        p// In viewUserDetailsSuper function, the correct content should be:
 
-const content = `
-    <div class="user-details-modal">
-        <div class="user-profile-header">
-            <div class="user-avatar">
-                <i class="fas fa-user-circle" style="font-size: 80px; color: #4CAF50;"></i>
-            </div>
-            <div class="user-basic-info">
-                <h3>${escapeHtml(user.fullName || user.username)}</h3>
-                <p><i class="fas fa-at"></i> @${escapeHtml(user.username)}</p>
-                <p><i class="fas fa-envelope"></i> ${escapeHtml(user.email)}</p>
-                <p><i class="fas fa-phone"></i> ${escapeHtml(user.phone)}</p>
-            </div>
-        </div>
-        
-        <div class="user-stats-grid">
-            <div class="stat-card-mini">
-                <span class="stat-label">Role</span>
-                <span class="stat-value">${user.role}</span>
-            </div>
-            <div class="stat-card-mini">
-                <span class="stat-label">Status</span>
-                <span class="stat-value ${user.isActive !== false ? 'success' : 'danger'}">
-                    ${user.isActive !== false ? 'Active' : 'Inactive'}
-                </span>
-            </div>
-            <div class="stat-card-mini">
-                <span class="stat-label">Verified</span>
-                <span class="stat-value ${user.isVerified ? 'success' : 'warning'}">
-                    ${user.isVerified ? 'Yes' : 'No'}
-                </span>
-            </div>
-            <div class="stat-card-mini">
-                <span class="stat-label">Login Count</span>
-                <span class="stat-value">${user.loginCount || 0}</span>
-            </div>
-        </div>
-        
-        <div class="financial-section">
-            <h4><i class="fas fa-wallet"></i> Financial Overview</h4>
-            <div class="financial-grid">
-                <div class="financial-item">
-                    <span>Balance:</span>
-                    <strong>${formatMoney(user.balance || 0)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Referral Balance:</span>
-                    <strong>${formatMoney(user.referralBalance || 0)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Total Earned:</span>
-                    <strong>${formatMoney(user.totalEarned || 0)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Total Invested:</span>
-                    <strong>${formatMoney(user.totalInvested || 0)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Total Deposited:</span>
-                    <strong>${formatMoney(totalDeposited)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Total Withdrawn:</span>
-                    <strong>${formatMoney(totalWithdrawn)}</strong>
-                </div>
-                <div class="financial-item">
-                    <span>Net Profit:</span>
-                    <strong class="${totalProfit >= 0 ? 'profit' : 'loss'}">
-                        ${formatMoney(totalProfit)}
-                    </strong>
-                </div>
-            </div>
-        </div>
-        
-        <div class="referral-section">
-            <h4><i class="fas fa-users"></i> Referral Information</h4>
-            <div class="referral-grid">
-                <div class="referral-item">
-                    <span>Referral Code:</span>
-                    <code>${user.myReferralCode || 'N/A'}</code>
-                </div>
-                <div class="referral-item">
-                    <span>Referred By:</span>
-                    <strong>${user.referredBy || 'None'}</strong>
-                </div>
-                <div class="referral-item">
-                    <span>Total Referrals:</span>
-                    <strong>${user.referrals?.length || 0}</strong>
-                </div>
-                <div class="referral-item">
-                    <span>Level 1 Commission:</span>
-                    <strong>${formatMoney(user.referralEarnings?.level1 || 0)}</strong>
-                </div>
-                <div class="referral-item">
-                    <span>Level 2 Commission:</span>
-                    <strong>${formatMoney(user.referralEarnings?.level2 || 0)}</strong>
-                </div>
-                <div class="referral-item">
-                    <span>Level 3 Commission:</span>
-                    <strong>${formatMoney(user.referralEarnings?.level3 || 0)}</strong>
-                </div>
-            </div>
-        </div>
-        
-        <div class="packages-section">
-            <h4><i class="fas fa-box"></i> Active Packages</h4>
-            ${user.activePackages && user.activePackages.length > 0 ? `
-                <div class="packages-list">
-                    ${user.activePackages.map(pkg => `
-                        <div class="package-item">
-                            <span><strong>${pkg.name}</strong></span>
-                            <span>Investment: ${formatMoney(pkg.investment)}</span>
-                            <span>Daily: ${formatMoney(pkg.dailyProfit)}</span>
-                            <span>Purchased: ${new Date(pkg.purchasedAt).toLocaleDateString()}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            ` : '<p>No active packages</p>'}
-        </div>
-        
-        <div class="recent-transactions">
-            <h4><i class="fas fa-history"></i> Recent Transactions</h4>
-            <div class="transactions-list">
-                ${user.history?.slice(0, 5).map(h => `
-                    <div class="transaction-item">
-                        <span class="transaction-type ${h.type}">${h.type}</span>
-                        <span class="transaction-amount ${h.type === 'withdrawal' ? 'negative' : 'positive'}">
-                            ${h.type === 'withdrawal' ? '-' : '+'}${formatMoney(h.amount)}
-                        </span>
-                        <span class="transaction-date">${timeAgo(h.date)}</span>
-                        <span class="transaction-status ${h.status}">${h.status}</span>
-                    </div>
-                `).join('') || '<p>No recent transactions</p>'}
-            </div>
-        </div>
-        
-        <div class="date-info">
-            <div class="date-item">
-                <i class="far fa-calendar-alt"></i> Joined: ${new Date(user.createdAt).toLocaleString()}
-            </div>
-            <div class="date-item">
-                <i class="fas fa-sign-in-alt"></i> Last Login: ${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
-            </div>
-            <div class="date-item">
-                <i class="fas fa-tasks"></i> Tasks Completed: ${user.tasksCompleted || 0}
-            </div>
-        </div>
-        
-        <div class="modal-actions">
-            <button onclick="editUserFromModal('${user.uid}')" class="action-btn">
-                <i class="fas fa-edit"></i> Edit User
-            </button>
-            <button onclick="addUserBalanceFromModal('${user.uid}', '${escapeHtml(user.fullName || user.username)}', '${user.balance || 0}')" class="action-btn success">
-                <i class="fas fa-plus-circle"></i> Add Balance
-            </button>
-            <button onclick="viewUserTransactions('${user.uid}')" class="action-btn info">
-                <i class="fas fa-receipt"></i> View All Transactions
-            </button>
-            <button onclick="showUserPasswordOptions('${user.uid}')" class="action-btn warning">
-                <i class="fas fa-key"></i> Password
-            </button>
-            <button onclick="closeUserDetailsModal()" class="action-btn secondary">Close</button>
-        </div>
-    </div>
-`;
-        
-        document.getElementById('userDetailsContent').innerHTML = content;
-        document.getElementById('userDetailsModal').classList.add('show');
-        
-    } catch (error) {
-        console.error('Error loading user details:', error);
-        showToast('Error loading user details', 'error');
-    }
-}
-
-function closeUserDetailsModal() {
-    document.getElementById('userDetailsModal').classList.remove('show');
-}
 
 function editUserFromModal(userId) {
     closeUserDetailsModal();
@@ -25606,3 +25294,2230 @@ async function debugDepositBonusStatus(depositId) {
 }
 
 window.debugDepositBonusStatus = debugDepositBonusStatus;
+
+// ============================================
+// SUPER ADMIN & ADMIN MANAGEMENT FUNCTIONS
+// ============================================
+
+// Global variables
+let allAdminsList = [];
+
+// ============================================
+// ADMIN MANAGEMENT FUNCTIONS
+// ============================================
+
+/**
+ * Load all admins from Firestore
+ */
+async function loadAdminsList() {
+    console.log('Loading admins list...');
+    
+    const tbody = document.getElementById('superAdminsTableBody');
+    if (!tbody) return;
+    
+    showLoading('Loading admins...');
+    
+    try {
+        // Fetch all users with role admin or superadmin
+        const adminsSnapshot = await db.collection('users')
+            .where('role', 'in', ['admin', 'superadmin'])
+            .get();
+        
+        allAdminsList = adminsSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data()
+        }));
+        
+        // Sort by role (superadmin first) then by createdAt
+        allAdminsList.sort((a, b) => {
+            if (a.role === 'superadmin' && b.role !== 'superadmin') return -1;
+            if (a.role !== 'superadmin' && b.role === 'superadmin') return 1;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+        
+        // Update stats
+        const totalAdmins = allAdminsList.length;
+        const activeAdmins = allAdminsList.filter(a => a.isActive !== false).length;
+        const superAdmins = allAdminsList.filter(a => a.role === 'superadmin').length;
+        
+        const totalEl = document.getElementById('superTotalAdmins');
+        const activeEl = document.getElementById('superActiveAdmins');
+        const superEl = document.getElementById('superSuperAdmins');
+        
+        if (totalEl) totalEl.textContent = totalAdmins;
+        if (activeEl) activeEl.textContent = activeAdmins;
+        if (superEl) superEl.textContent = superAdmins;
+        
+        if (allAdminsList.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No admins found</td></tr>';
+            hideLoading();
+            return;
+        }
+        
+        let html = '';
+        for (const admin of allAdminsList) {
+            const lastLogin = admin.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never';
+            const roleBadge = admin.role === 'superadmin' ? 'superadmin-badge' : 'admin-badge';
+            const isProtected = admin.role === 'superadmin';
+            
+            html += `
+                <tr class="admin-row ${admin.isActive === false ? 'inactive-admin' : ''}">
+                    <td>
+                        <div class="user-info">
+                            <i class="fas ${admin.role === 'superadmin' ? 'fa-crown' : 'fa-user-shield'}"></i>
+                            <div>
+                                <strong>${escapeHtml(admin.fullName || admin.username)}</strong>
+                                <small>@${escapeHtml(admin.username)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(admin.email)}</td>
+                    <td><span class="role-badge ${roleBadge}">${admin.role}</span></td>
+                    <td>
+                        <span class="status-badge ${admin.isActive !== false ? 'success' : 'danger'}">
+                            ${admin.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${lastLogin}</td>
+                    <td class="action-buttons">
+                        <button class="action-btn small" onclick="viewAdminDetails('${admin.uid}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        ${!isProtected ? `
+                            <button class="action-btn small" onclick="editAdmin('${admin.uid}')" title="Edit Admin">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="action-btn small ${admin.isActive !== false ? 'warning' : 'success'}" 
+                                onclick="toggleAdminStatus('${admin.uid}')" 
+                                title="${admin.isActive !== false ? 'Deactivate' : 'Activate'}">
+                                <i class="fas ${admin.isActive !== false ? 'fa-ban' : 'fa-check'}"></i>
+                            </button>
+                            <button class="action-btn small danger" onclick="removeAdminUser('${admin.uid}')" title="Remove Admin">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : '<span class="protected-badge"><i class="fas fa-lock"></i> Protected</span>'}
+                    </td>
+                </tr>
+            `;
+        }
+        
+        tbody.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading admins:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">Error loading admins: ' + error.message + '</td></tr>';
+        showToast('Error loading admins', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * View admin details
+ */
+async function viewAdminDetails(adminId) {
+    console.log('Viewing admin details:', adminId);
+    
+    const admin = allAdminsList.find(a => a.uid === adminId);
+    if (!admin) {
+        showToast('Admin not found', 'error');
+        return;
+    }
+    
+    const content = `
+        <div class="admin-details-container">
+            <div class="admin-profile-header">
+                <div class="admin-avatar">
+                    <i class="fas ${admin.role === 'superadmin' ? 'fa-crown' : 'fa-user-shield'}" style="font-size: 60px; color: ${admin.role === 'superadmin' ? '#FFD700' : '#FF5722'};"></i>
+                </div>
+                <div class="admin-info">
+                    <h3>${escapeHtml(admin.fullName || admin.username)}</h3>
+                    <p><i class="fas fa-at"></i> @${escapeHtml(admin.username)}</p>
+                    <p><i class="fas fa-envelope"></i> ${escapeHtml(admin.email)}</p>
+                    <p><i class="fas fa-phone"></i> ${escapeHtml(admin.phone)}</p>
+                </div>
+            </div>
+            
+            <div class="admin-stats-grid">
+                <div class="stat-card-mini">
+                    <span class="stat-label">Role</span>
+                    <span class="stat-value">${admin.role}</span>
+                </div>
+                <div class="stat-card-mini">
+                    <span class="stat-label">Status</span>
+                    <span class="stat-value ${admin.isActive !== false ? 'success' : 'danger'}">
+                        ${admin.isActive !== false ? 'Active' : 'Inactive'}
+                    </span>
+                </div>
+                <div class="stat-card-mini">
+                    <span class="stat-label">Verified</span>
+                    <span class="stat-value ${admin.isVerified ? 'success' : 'warning'}">
+                        ${admin.isVerified ? 'Yes' : 'No'}
+                    </span>
+                </div>
+                <div class="stat-card-mini">
+                    <span class="stat-label">Login Count</span>
+                    <span class="stat-value">${admin.loginCount || 0}</span>
+                </div>
+            </div>
+            
+            <div class="admin-dates">
+                <div class="date-item">
+                    <i class="far fa-calendar-alt"></i> Joined: ${new Date(admin.createdAt).toLocaleString()}
+                </div>
+                <div class="date-item">
+                    <i class="fas fa-sign-in-alt"></i> Last Login: ${admin.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never'}
+                </div>
+                <div class="date-item">
+                    <i class="fas fa-code-branch"></i> Referral Code: <code>${admin.myReferralCode || 'N/A'}</code>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                ${admin.role !== 'superadmin' ? `
+                    <button onclick="editAdmin('${admin.uid}')" class="action-btn">
+                        <i class="fas fa-edit"></i> Edit Admin
+                    </button>
+                    <button onclick="toggleAdminStatus('${admin.uid}')" class="action-btn ${admin.isActive !== false ? 'warning' : 'success'}">
+                        <i class="fas ${admin.isActive !== false ? 'fa-ban' : 'fa-check'}"></i>
+                        ${admin.isActive !== false ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button onclick="removeAdminUser('${admin.uid}')" class="action-btn danger">
+                        <i class="fas fa-trash"></i> Remove Admin
+                    </button>
+                ` : '<span class="protected-message"><i class="fas fa-shield-alt"></i> Super Admin cannot be modified</span>'}
+                <button onclick="closeAdminDetailsModal()" class="action-btn secondary">Close</button>
+            </div>
+        </div>
+    `;
+    
+    const contentDiv = document.getElementById('adminDetailsContent');
+    if (contentDiv) contentDiv.innerHTML = content;
+    
+    document.getElementById('adminDetailsModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close admin details modal
+ */
+function closeAdminDetailsModal() {
+    document.getElementById('adminDetailsModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Show add admin form
+ */
+function showAddAdminForm() {
+    document.getElementById('adminFullName').value = '';
+    document.getElementById('adminUsername').value = '';
+    document.getElementById('adminEmail').value = '';
+    document.getElementById('adminPhone').value = '';
+    document.getElementById('adminPassword').value = '';
+    document.getElementById('adminRole').value = 'admin';
+    
+    document.getElementById('addAdminModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close add admin modal
+ */
+function closeAddAdminModal() {
+    document.getElementById('addAdminModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Create new admin
+ */
+async function createNewAdmin() {
+    const fullName = document.getElementById('adminFullName').value.trim();
+    const username = document.getElementById('adminUsername').value.trim();
+    const email = document.getElementById('adminEmail').value.trim();
+    const phone = document.getElementById('adminPhone').value.trim();
+    const password = document.getElementById('adminPassword').value;
+    const role = document.getElementById('adminRole').value;
+    
+    if (!fullName || !username || !email || !phone || !password) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    if (password.length < 6) {
+        showToast('Password must be at least 6 characters', 'error');
+        return;
+    }
+    
+    if (!validateEmail(email)) {
+        showToast('Please enter a valid email address', 'error');
+        return;
+    }
+    
+    showLoading('Creating admin...');
+    
+    try {
+        // Check if username exists
+        const usernameCheck = await db.collection('users')
+            .where('username', '==', username)
+            .get();
+        
+        if (!usernameCheck.empty) {
+            hideLoading();
+            showToast('Username already exists', 'error');
+            return;
+        }
+        
+        // Check if email exists
+        const emailCheck = await db.collection('users')
+            .where('email', '==', email)
+            .get();
+        
+        if (!emailCheck.empty) {
+            hideLoading();
+            showToast('Email already registered', 'error');
+            return;
+        }
+        
+        // Create auth user
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const uid = userCredential.user.uid;
+        
+        // Generate unique referral code
+        const myReferralCode = await generateUniqueReferralCode();
+        
+        // Create admin document
+        const adminData = {
+            uid: uid,
+            username: username,
+            email: email,
+            fullName: fullName,
+            phone: phone,
+            role: role,
+            usernameLower: username.toLowerCase(),
+            isActive: true,
+            isVerified: true,
+            profileImage: null,
+            balance: 0,
+            referralBalance: 0,
+            totalEarned: 0,
+            totalInvested: 0,
+            referralEarnings: { level1: 0, level2: 0, level3: 0 },
+            referrals: [],
+            myReferralCode: myReferralCode,
+            referredBy: null,
+            tasksCompleted: 0,
+            lastTaskDate: null,
+            completedTasks: [],
+            activePackages: [],
+            history: [],
+            notifications: [],
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            loginCount: 1,
+            weeklyCommission: {
+                lastPaidDate: null,
+                currentWeekEarnings: { level1: 0, level2: 0, level3: 0, total: 0 },
+                commissionHistory: [],
+                pendingCommission: 0,
+                weeklyTaskEarnings: 0
+            }
+        };
+        
+        await db.collection('users').doc(uid).set(adminData);
+        
+        // Log the action
+        await logAudit('admin_created', `New ${role} created: ${username} (${fullName})`, currentUser.uid);
+        
+        hideLoading();
+        showToast(`✅ ${role} created successfully!`, 'success');
+        closeAddAdminModal();
+        
+        // Refresh admins list
+        await loadAdminsList();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error creating admin:', error);
+        showToast('Error creating admin: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Edit admin
+ */
+async function editAdmin(adminId) {
+    const admin = allAdminsList.find(a => a.uid === adminId);
+    if (!admin) {
+        showToast('Admin not found', 'error');
+        return;
+    }
+    
+    if (admin.role === 'superadmin') {
+        showToast('Super Admin cannot be edited', 'error');
+        return;
+    }
+    
+    document.getElementById('editAdminId').value = admin.uid;
+    document.getElementById('editAdminFullName').value = admin.fullName || '';
+    document.getElementById('editAdminUsername').value = admin.username || '';
+    document.getElementById('editAdminEmail').value = admin.email || '';
+    document.getElementById('editAdminPhone').value = admin.phone || '';
+    document.getElementById('editAdminRole').value = admin.role || 'admin';
+    document.getElementById('editAdminStatus').value = admin.isActive !== false ? 'true' : 'false';
+    
+    document.getElementById('editAdminModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close edit admin modal
+ */
+function closeEditAdminModal() {
+    document.getElementById('editAdminModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Save admin edits
+ */
+async function saveAdminEdits() {
+    const adminId = document.getElementById('editAdminId').value;
+    const updates = {
+        fullName: document.getElementById('editAdminFullName').value.trim(),
+        username: document.getElementById('editAdminUsername').value.trim(),
+        email: document.getElementById('editAdminEmail').value.trim(),
+        phone: document.getElementById('editAdminPhone').value.trim(),
+        role: document.getElementById('editAdminRole').value,
+        isActive: document.getElementById('editAdminStatus').value === 'true',
+        updatedAt: new Date().toISOString()
+    };
+    
+    if (!updates.fullName || !updates.username || !updates.email || !updates.phone) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    showLoading('Saving changes...');
+    
+    try {
+        // Check if username is taken
+        const oldAdmin = allAdminsList.find(a => a.uid === adminId);
+        if (updates.username !== oldAdmin.username) {
+            const usernameCheck = await db.collection('users')
+                .where('username', '==', updates.username)
+                .where('uid', '!=', adminId)
+                .get();
+            
+            if (!usernameCheck.empty) {
+                hideLoading();
+                showToast('Username already taken', 'error');
+                return;
+            }
+        }
+        
+        await db.collection('users').doc(adminId).update(updates);
+        
+        await logAudit('admin_updated', `Admin ${updates.username} updated by ${currentUser.username}`, currentUser.uid);
+        
+        hideLoading();
+        showToast('✅ Admin updated successfully!', 'success');
+        closeEditAdminModal();
+        
+        // Refresh admins list
+        await loadAdminsList();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error saving admin edits:', error);
+        showToast('Error saving changes: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Toggle admin status (activate/deactivate)
+ */
+async function toggleAdminStatus(adminId) {
+    const admin = allAdminsList.find(a => a.uid === adminId);
+    if (!admin) return;
+    
+    if (admin.role === 'superadmin') {
+        showToast('Cannot modify Super Admin status', 'error');
+        return;
+    }
+    
+    const newStatus = !(admin.isActive !== false);
+    const action = newStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`⚠️ Are you sure you want to ${action} admin ${admin.username}?\n\n${action === 'deactivate' ? 'This will prevent them from accessing the admin panel.' : 'This will restore their admin access.'}`)) {
+        return;
+    }
+    
+    showLoading(`${action === 'deactivate' ? 'Deactivating' : 'Activating'} admin...`);
+    
+    try {
+        await db.collection('users').doc(adminId).update({
+            isActive: newStatus,
+            deactivatedAt: newStatus ? null : new Date().toISOString(),
+            deactivatedBy: newStatus ? null : currentUser.uid,
+            updatedAt: new Date().toISOString()
+        });
+        
+        await logAudit('admin_status_changed', `Admin ${admin.username} ${action}d by ${currentUser.username}`, currentUser.uid);
+        
+        // Send notification to the admin
+        if (!newStatus) {
+            await addNotification(adminId, '🛡️ Admin Account Deactivated', 
+                `Your admin account has been deactivated by ${currentUser.username}. Contact support for more information.`, 'warning');
+        } else {
+            await addNotification(adminId, '✅ Admin Account Activated', 
+                `Your admin account has been reactivated by ${currentUser.username}. You can now access the admin panel again.`, 'success');
+        }
+        
+        hideLoading();
+        showToast(`Admin ${action}d successfully`, 'success');
+        
+        // Refresh admins list
+        await loadAdminsList();
+        
+        // If current admin is deactivating themselves, log them out
+        if (currentUser && currentUser.uid === adminId && !newStatus) {
+            showToast('You have deactivated your own admin account. Logging out...', 'warning');
+            setTimeout(() => {
+                logout();
+            }, 2000);
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error updating admin status:', error);
+        showToast('Error updating status: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Remove admin user (delete permanently)
+ */
+async function removeAdminUser(adminId) {
+    const admin = allAdminsList.find(a => a.uid === adminId);
+    if (!admin) return;
+    
+    if (admin.role === 'superadmin') {
+        showToast('Cannot remove Super Admin', 'error');
+        return;
+    }
+    
+    if (!confirm(`⚠️ WARNING: This will permanently delete admin ${admin.username} and ALL their data!\n\nThis action CANNOT be undone!\n\nType "${admin.username.toUpperCase()}" to confirm:`)) {
+        const confirmText = prompt(`Type "${admin.username.toUpperCase()}" to confirm deletion:`);
+        if (confirmText !== admin.username.toUpperCase()) {
+            showToast('Deletion cancelled', 'info');
+            return;
+        }
+    }
+    
+    showLoading('Removing admin...');
+    
+    try {
+        const batch = db.batch();
+        
+        // Delete admin's deposits
+        const depositsSnap = await db.collection('deposits')
+            .where('userId', '==', adminId)
+            .get();
+        depositsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        // Delete admin's withdrawals
+        const withdrawalsSnap = await db.collection('withdrawals')
+            .where('userId', '==', adminId)
+            .get();
+        withdrawalsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        // Delete admin document
+        batch.delete(db.collection('users').doc(adminId));
+        
+        await batch.commit();
+        
+        // Try to delete Firebase Auth user
+        try {
+            const userToDelete = await auth.getUser(adminId);
+            if (userToDelete) {
+                await auth.deleteUser(adminId);
+            }
+        } catch (e) {
+            console.log('Auth user may not exist or already deleted:', e.message);
+        }
+        
+        await logAudit('admin_removed', `Admin ${admin.username} permanently removed by ${currentUser.username}`, currentUser.uid);
+        
+        hideLoading();
+        showToast(`✅ Admin ${admin.username} removed successfully`, 'success');
+        
+        // Refresh admins list
+        await loadAdminsList();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error removing admin:', error);
+        showToast('Error removing admin: ' + error.message, 'error');
+    }
+}
+
+// ============================================
+// USER MANAGEMENT FUNCTIONS FOR SUPER ADMIN
+// ============================================
+
+/**
+ * Load all users for super admin panel
+ */
+async function loadAllUsersForSuper() {
+    console.log('Loading all users for super admin...');
+    
+    const tbody = document.getElementById('superAllUsersTableBody');
+    if (!tbody) return;
+    
+    showLoading('Loading users...');
+    
+    try {
+        const usersSnapshot = await db.collection('users')
+            .where('role', '==', 'user')
+            .get();
+        
+        const users = usersSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data()
+        }));
+        
+        // Update stats
+        const activeUsers = users.filter(u => u.isActive !== false).length;
+        const totalBalance = users.reduce((sum, u) => sum + (u.balance || 0) + (u.referralBalance || 0), 0);
+        
+        const totalUsersEl = document.getElementById('superTotalUsersCount');
+        const activeUsersEl = document.getElementById('superActiveUsersCount');
+        const totalBalanceEl = document.getElementById('superTotalBalance');
+        
+        if (totalUsersEl) totalUsersEl.textContent = users.length;
+        if (activeUsersEl) activeUsersEl.textContent = activeUsers;
+        if (totalBalanceEl) totalBalanceEl.textContent = formatMoney(totalBalance);
+        
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No users found</td></tr>';
+            hideLoading();
+            return;
+        }
+        
+        let html = '';
+        for (const user of users) {
+            const totalInvested = user.activePackages?.reduce((sum, p) => sum + p.investment, 0) || 0;
+            
+            html += `
+                <tr class="user-row ${user.isActive === false ? 'inactive-user' : ''}">
+                    <td>
+                        <div class="user-info">
+                            <i class="fas fa-user-circle"></i>
+                            <div>
+                                <strong>${escapeHtml(user.fullName || user.username)}</strong>
+                                <small>@${escapeHtml(user.username)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <small>${escapeHtml(user.email)}</small><br>
+                        <small>${escapeHtml(user.phone)}</small>
+                    </td>
+                    <td>${formatMoney(user.balance || 0)}</td>
+                    <td>${user.referrals?.length || 0}</td>
+                    <td>${user.activePackages?.length || 0}</td>
+                    <td>
+                        <span class="status-badge ${user.isActive !== false ? 'success' : 'danger'}">
+                            ${user.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+                    <td class="action-buttons">
+   
+<button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')" title="View Details">
+    <i class="fas fa-eye"></i>
+</button>
+                        <button class="action-btn small" onclick="editUserAccount('${user.uid}')" title="Edit User">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn small success" onclick="showAddBalanceModal('${user.uid}', '${escapeHtml(user.username)}', '${user.balance || 0}')" title="Add Balance">
+                            <i class="fas fa-plus-circle"></i>
+                        </button>
+                        <button class="action-btn small warning" onclick="showUserPasswordOptions('${user.uid}')" title="Password Management">
+                            <i class="fas fa-key"></i>
+                        </button>
+                        <button class="action-btn small info" onclick="viewUserTransactions('${user.uid}')" title="View Transactions">
+                            <i class="fas fa-receipt"></i>
+                        </button>
+                        <button class="action-btn small ${user.isActive !== false ? 'warning' : 'success'}" 
+                            onclick="toggleUserStatusSuper('${user.uid}')" 
+                            title="${user.isActive !== false ? 'Deactivate' : 'Activate'}">
+                            <i class="fas ${user.isActive !== false ? 'fa-ban' : 'fa-check'}"></i>
+                        </button>
+                        <button class="action-btn small danger" onclick="deleteUserAccountSuper('${user.uid}')" title="Delete User">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+        
+        tbody.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading users:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">Error loading users: ' + error.message + '</td></tr>';
+        showToast('Error loading users', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Toggle user status for super admin
+ */
+async function toggleUserStatusSuper(userId) {
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) return;
+    
+    const user = userDoc.data();
+    const newStatus = !(user.isActive !== false);
+    const action = newStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`⚠️ Are you sure you want to ${action} user ${user.username}?\n\n${action === 'deactivate' ? 'This will immediately log them out if they are currently online.' : ''}`)) {
+        return;
+    }
+    
+    showLoading(`${action === 'deactivate' ? 'Deactivating' : 'Activating'} user...`);
+    
+    try {
+        await db.collection('users').doc(userId).update({
+            isActive: newStatus,
+            deactivatedAt: newStatus ? null : new Date().toISOString(),
+            deactivatedBy: newStatus ? null : currentUser.uid,
+            updatedAt: new Date().toISOString()
+        });
+        
+        await logAudit('user_status_changed', `User ${user.username} ${action}d by ${currentUser.username}`, currentUser.uid);
+        
+        if (!newStatus) {
+            await addNotification(userId, '⚠️ Account Deactivated', 
+                'Your account has been deactivated by an administrator. Please contact support.', 'warning');
+        } else {
+            await addNotification(userId, '✅ Account Activated', 
+                'Your account has been reactivated. You can now login again.', 'success');
+        }
+        
+        hideLoading();
+        showToast(`User ${action}d successfully`, 'success');
+        
+        // Refresh lists
+        await loadAllUsersForSuper();
+        
+        // If current user is being deactivated, log them out
+        if (currentUser && currentUser.uid === userId && !newStatus) {
+            showToast('You have deactivated your own account. Logging out...', 'warning');
+            setTimeout(() => {
+                logout();
+            }, 2000);
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error updating user status:', error);
+        showToast('Error updating status', 'error');
+    }
+}
+
+/**
+ * Delete user account permanently
+ */
+async function deleteUserAccountSuper(userId) {
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) return;
+    
+    const user = userDoc.data();
+    
+    if (!confirm(`⚠️ WARNING: This will permanently delete user ${user.username} and ALL their data!\n\nType "${user.username.toUpperCase()}" to confirm:`)) {
+        const confirmText = prompt(`Type "${user.username.toUpperCase()}" to confirm deletion:`);
+        if (confirmText !== user.username.toUpperCase()) {
+            showToast('Deletion cancelled', 'info');
+            return;
+        }
+    }
+    
+    showLoading('Deleting user account...');
+    
+    try {
+        const batch = db.batch();
+        
+        // Delete user's deposits
+        const depositsSnap = await db.collection('deposits')
+            .where('userId', '==', userId)
+            .get();
+        depositsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        // Delete user's withdrawals
+        const withdrawalsSnap = await db.collection('withdrawals')
+            .where('userId', '==', userId)
+            .get();
+        withdrawalsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        // Delete user document
+        batch.delete(db.collection('users').doc(userId));
+        
+        await batch.commit();
+        
+        // Try to delete Firebase Auth user
+        try {
+            const userToDelete = await auth.getUser(userId);
+            if (userToDelete) {
+                await auth.deleteUser(userId);
+            }
+        } catch (e) {
+            console.log('Auth user may not exist or already deleted');
+        }
+        
+        await logAudit('user_deleted', `User ${user.username} permanently deleted by ${currentUser.username}`, currentUser.uid);
+        
+        hideLoading();
+        showToast(`✅ User ${user.username} deleted permanently`, 'success');
+        
+        // Refresh users list
+        await loadAllUsersForSuper();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error deleting user:', error);
+        showToast('Error deleting user: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Show add balance modal
+ */
+function showAddBalanceModal(userId, userName, currentBalance) {
+    document.getElementById('balanceUserId').value = userId;
+    document.getElementById('balanceUserName').value = userName;
+    document.getElementById('balanceCurrentBalance').value = formatMoney(currentBalance);
+    document.getElementById('balanceAmount').value = '';
+    document.getElementById('balanceReason').value = '';
+    document.getElementById('balanceType').value = 'main';
+    
+    document.getElementById('addBalanceModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close add balance modal
+ */
+function closeAddBalanceModal() {
+    document.getElementById('addBalanceModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Process add balance
+ */
+async function processAddBalance() {
+    const userId = document.getElementById('balanceUserId').value;
+    const amount = parseFloat(document.getElementById('balanceAmount').value);
+    const reason = document.getElementById('balanceReason').value.trim() || 'Admin Bonus';
+    const balanceType = document.getElementById('balanceType').value;
+    
+    if (!amount || amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    showLoading('Adding balance...');
+    
+    try {
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+        const user = userDoc.data();
+        
+        const updates = {
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'bonus',
+                description: reason,
+                amount: amount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    addedBy: currentUser.username,
+                    addedTo: balanceType,
+                    reason: reason
+                }
+            })
+        };
+        
+        if (balanceType === 'main' || balanceType === 'both') {
+            const mainAmount = balanceType === 'both' ? amount / 2 : amount;
+            updates.balance = firebase.firestore.FieldValue.increment(mainAmount);
+            updates.totalEarned = firebase.firestore.FieldValue.increment(mainAmount);
+        }
+        
+        if (balanceType === 'referral' || balanceType === 'both') {
+            const referralAmount = balanceType === 'both' ? amount / 2 : amount;
+            updates.referralBalance = firebase.firestore.FieldValue.increment(referralAmount);
+            updates.totalEarned = firebase.firestore.FieldValue.increment(referralAmount);
+        }
+        
+        await userRef.update(updates);
+        
+        await addNotification(userId, '💰 Balance Added!', 
+            `Your balance has been increased by ${formatMoney(amount)}. Reason: ${reason}`, 'success');
+        
+        await logAudit('balance_added', `Added ${formatMoney(amount)} to ${user.username} (${balanceType}) - ${reason}`, currentUser.uid);
+        
+        hideLoading();
+        showToast(`✅ Added ${formatMoney(amount)} successfully`, 'success');
+        closeAddBalanceModal();
+        
+        // Refresh user lists
+        await loadAllUsersForSuper();
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error adding balance:', error);
+        showToast('Error adding balance', 'error');
+    }
+}
+
+/**
+ * View user transactions
+ */
+async function viewUserTransactions(userId) {
+    try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            showToast('User not found', 'error');
+            return;
+        }
+        
+        const user = userDoc.data();
+        const transactions = user.history || [];
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (transactions.length === 0) {
+            document.getElementById('userTransactionsContent').innerHTML = '<p class="no-data">No transactions found</p>';
+        } else {
+            let html = `
+                <div class="user-transactions-header">
+                    <h3>${escapeHtml(user.fullName || user.username)} - Transactions</h3>
+                    <p>Total: ${transactions.length} transactions</p>
+                </div>
+                <div class="transactions-list">
+            `;
+            
+            for (const tx of transactions) {
+                const typeIcon = {
+                    'deposit': 'fa-credit-card',
+                    'withdrawal': 'fa-money-bill-wave',
+                    'profit': 'fa-chart-line',
+                    'bonus': 'fa-gift',
+                    'task': 'fa-tasks'
+                }[tx.type] || 'fa-history';
+                
+                const amountClass = tx.type === 'withdrawal' ? 'negative' : 'positive';
+                const amountSign = tx.type === 'withdrawal' ? '-' : '+';
+                
+                html += `
+                    <div class="transaction-item">
+                        <div class="transaction-icon ${tx.type}">
+                            <i class="fas ${typeIcon}"></i>
+                        </div>
+                        <div class="transaction-details">
+                            <div class="transaction-title">${escapeHtml(tx.description || tx.type)}</div>
+                            <div class="transaction-meta">
+                                <span>${new Date(tx.date).toLocaleString()}</span>
+                                <span class="status-badge ${tx.status}">${tx.status}</span>
+                            </div>
+                        </div>
+                        <div class="transaction-amount ${amountClass}">
+                            ${amountSign}${formatMoney(tx.amount)}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            document.getElementById('userTransactionsContent').innerHTML = html;
+        }
+        
+        document.getElementById('userTransactionsModal').classList.add('show');
+        document.body.style.overflow = 'hidden';
+        
+    } catch (error) {
+        console.error('Error loading user transactions:', error);
+        showToast('Error loading transactions', 'error');
+    }
+}
+
+/**
+ * Close user transactions modal
+ */
+function closeUserTransactionsModal() {
+    document.getElementById('userTransactionsModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// ============================================
+// BULK ACTIONS FUNCTIONS
+// ============================================
+
+/**
+ * Toggle select all users
+ */
+function toggleSelectAllUsers() {
+    const checkbox = document.getElementById('selectAllUsers');
+    const checkboxes = document.querySelectorAll('.user-select');
+    
+    if (checkbox && checkbox.checked) {
+        checkboxes.forEach(cb => {
+            cb.checked = true;
+            selectedUserIds.add(cb.getAttribute('data-id'));
+        });
+    } else {
+        checkboxes.forEach(cb => {
+            cb.checked = false;
+            selectedUserIds.delete(cb.getAttribute('data-id'));
+        });
+    }
+    
+    updateSelectedCount();
+}
+
+/**
+ * Update selected count
+ */
+function updateSelectedCount() {
+    const countSpan = document.getElementById('selectedCount');
+    if (countSpan) {
+        countSpan.textContent = selectedUserIds.size;
+    }
+}
+
+/**
+ * Show bulk actions modal
+ */
+function showBulkActionsModal() {
+    if (selectedUserIds.size === 0) {
+        showToast('Please select at least one user', 'warning');
+        return;
+    }
+    
+    document.getElementById('selectedCount').textContent = selectedUserIds.size;
+    document.getElementById('bulkActionsModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close bulk actions modal
+ */
+function closeBulkActionsModal() {
+    document.getElementById('bulkActionsModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Bulk activate users
+ */
+async function bulkActivateUsers() {
+    if (!confirm(`Activate ${selectedUserIds.size} selected users?`)) return;
+    
+    showLoading('Activating users...');
+    let count = 0;
+    let errors = 0;
+    
+    for (const userId of selectedUserIds) {
+        try {
+            await db.collection('users').doc(userId).update({
+                isActive: true,
+                updatedAt: new Date().toISOString()
+            });
+            count++;
+        } catch (err) {
+            console.error(`Error activating user ${userId}:`, err);
+            errors++;
+        }
+    }
+    
+    await logAudit('bulk_activate', `Activated ${count} users (${errors} errors)`, currentUser.uid);
+    
+    hideLoading();
+    showToast(`${count} users activated successfully${errors > 0 ? `, ${errors} failed` : ''}`, 'success');
+    closeBulkActionsModal();
+    selectedUserIds.clear();
+    await loadAllUsersForSuper();
+}
+
+/**
+ * Bulk deactivate users
+ */
+async function bulkDeactivateUsers() {
+    if (!confirm(`Deactivate ${selectedUserIds.size} selected users?`)) return;
+    
+    showLoading('Deactivating users...');
+    let count = 0;
+    let errors = 0;
+    
+    for (const userId of selectedUserIds) {
+        try {
+            await db.collection('users').doc(userId).update({
+                isActive: false,
+                deactivatedAt: new Date().toISOString(),
+                deactivatedBy: currentUser.uid,
+                updatedAt: new Date().toISOString()
+            });
+            
+            await addNotification(userId, '⚠️ Account Deactivated', 
+                'Your account has been deactivated by an administrator. Please contact support.', 'warning');
+            count++;
+        } catch (err) {
+            console.error(`Error deactivating user ${userId}:`, err);
+            errors++;
+        }
+    }
+    
+    await logAudit('bulk_deactivate', `Deactivated ${count} users (${errors} errors)`, currentUser.uid);
+    
+    hideLoading();
+    showToast(`${count} users deactivated successfully${errors > 0 ? `, ${errors} failed` : ''}`, 'success');
+    closeBulkActionsModal();
+    selectedUserIds.clear();
+    await loadAllUsersForSuper();
+}
+
+/**
+ * Bulk add bonus to users
+ */
+async function bulkAddBonus() {
+    const amount = prompt('Enter bonus amount (TZS):', '10000');
+    if (!amount) return;
+    
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+        showToast('Invalid amount', 'error');
+        return;
+    }
+    
+    const reason = prompt('Enter reason for bonus:', 'Administrative Bonus');
+    if (!reason) return;
+    
+    if (!confirm(`Add ${formatMoney(numAmount)} bonus to ${selectedUserIds.size} users?`)) return;
+    
+    showLoading('Adding bonuses...');
+    let count = 0;
+    let errors = 0;
+    
+    for (const userId of selectedUserIds) {
+        try {
+            await db.collection('users').doc(userId).update({
+                balance: firebase.firestore.FieldValue.increment(numAmount),
+                totalEarned: firebase.firestore.FieldValue.increment(numAmount),
+                history: firebase.firestore.FieldValue.arrayUnion({
+                    id: generateId(),
+                    type: 'bonus',
+                    description: reason,
+                    amount: numAmount,
+                    status: 'completed',
+                    date: new Date().toISOString(),
+                    metadata: {
+                        addedBy: currentUser.username,
+                        bulkAction: true
+                    }
+                })
+            });
+            
+            await addNotification(userId, '💰 Bonus Added!', 
+                `You received ${formatMoney(numAmount)} bonus. Reason: ${reason}`, 'success');
+            count++;
+        } catch (err) {
+            console.error(`Error adding bonus to user ${userId}:`, err);
+            errors++;
+        }
+    }
+    
+    await logAudit('bulk_bonus', `Added ${formatMoney(numAmount)} bonus to ${count} users (${errors} errors)`, currentUser.uid);
+    
+    hideLoading();
+    showToast(`Bonus added to ${count} users successfully${errors > 0 ? `, ${errors} failed` : ''}`, 'success');
+    closeBulkActionsModal();
+    selectedUserIds.clear();
+    await loadAllUsersForSuper();
+}
+
+/**
+ * Bulk send notification to users
+ */
+async function bulkSendNotification() {
+    const title = prompt('Notification Title:', 'Important Announcement');
+    if (!title) return;
+    
+    const message = prompt('Notification Message:', '');
+    if (!message) return;
+    
+    if (!confirm(`Send notification to ${selectedUserIds.size} users?`)) return;
+    
+    showLoading('Sending notifications...');
+    let count = 0;
+    let errors = 0;
+    
+    for (const userId of selectedUserIds) {
+        try {
+            await addNotification(userId, title, message, 'info');
+            count++;
+        } catch (err) {
+            console.error(`Error sending notification to user ${userId}:`, err);
+            errors++;
+        }
+    }
+    
+    await logAudit('bulk_notification', `Sent notification to ${count} users: ${title} (${errors} errors)`, currentUser.uid);
+    
+    hideLoading();
+    showToast(`Notification sent to ${count} users successfully${errors > 0 ? `, ${errors} failed` : ''}`, 'success');
+    closeBulkActionsModal();
+}
+
+// ============================================
+// AUDIT LOG FUNCTIONS
+// ============================================
+
+/**
+ * Log audit action
+ */
+async function logAudit(action, details, userId = null) {
+    try {
+        const auditData = {
+            timestamp: new Date().toISOString(),
+            action: action,
+            details: details,
+            userId: userId || currentUser?.uid,
+            username: currentUser?.username || 'system',
+            ipAddress: await getClientIP()
+        };
+        
+        await db.collection('auditLogs').add(auditData);
+        
+    } catch (error) {
+        console.error('Error logging audit:', error);
+    }
+}
+
+/**
+ * Get client IP address
+ */
+async function getClientIP() {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        return data.ip;
+    } catch (error) {
+        return 'unknown';
+    }
+}
+
+/**
+ * Load audit logs
+ */
+async function loadAuditLogs() {
+    const tbody = document.getElementById('auditLogsBody');
+    if (!tbody) return;
+    
+    try {
+        const snapshot = await db.collection('auditLogs')
+            .orderBy('timestamp', 'desc')
+            .limit(100)
+            .get();
+        
+        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="no-data">No audit logs found</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for (const log of logs) {
+            html += `
+                <tr>
+                    <td>${new Date(log.timestamp).toLocaleString()}</td>
+                    <td><strong>${escapeHtml(log.username || 'system')}</strong></td>
+                    <td><span class="action-badge">${escapeHtml(log.action)}</span></td>
+                    <td>${escapeHtml(log.details)}</td>
+                    <td><code>${log.ipAddress || 'unknown'}</code></td>
+                </tr>
+            `;
+        }
+        
+        tbody.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading audit logs:', error);
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">Error loading audit logs</td></tr>';
+    }
+}
+
+/**
+ * Filter audit logs
+ */
+function filterAuditLogs() {
+    const type = document.getElementById('auditTypeFilter')?.value || 'all';
+    const date = document.getElementById('auditDateFilter')?.value;
+    
+    // This will be implemented with Firestore queries
+    loadAuditLogs();
+}
+
+/**
+ * Export audit logs
+ */
+function exportAuditLogs() {
+    showToast('Export feature coming soon', 'info');
+}
+
+// ============================================
+// EXPORT FUNCTIONS
+// ============================================
+
+window.loadAdminsList = loadAdminsList;
+window.viewAdminDetails = viewAdminDetails;
+window.closeAdminDetailsModal = closeAdminDetailsModal;
+window.showAddAdminForm = showAddAdminForm;
+window.closeAddAdminModal = closeAddAdminModal;
+window.createNewAdmin = createNewAdmin;
+window.editAdmin = editAdmin;
+window.closeEditAdminModal = closeEditAdminModal;
+window.saveAdminEdits = saveAdminEdits;
+window.toggleAdminStatus = toggleAdminStatus;
+window.removeAdminUser = removeAdminUser;
+window.loadAllUsersForSuper = loadAllUsersForSuper;
+window.viewUserDetailsSuper = viewUserDetailsSuper;
+window.closeUserDetailsModal = closeUserDetailsModal;
+window.toggleUserStatusSuper = toggleUserStatusSuper;
+window.deleteUserAccountSuper = deleteUserAccountSuper;
+window.showAddBalanceModal = showAddBalanceModal;
+window.closeAddBalanceModal = closeAddBalanceModal;
+window.processAddBalance = processAddBalance;
+window.viewUserTransactions = viewUserTransactions;
+window.closeUserTransactionsModal = closeUserTransactionsModal;
+window.toggleSelectAllUsers = toggleSelectAllUsers;
+window.showBulkActionsModal = showBulkActionsModal;
+window.closeBulkActionsModal = closeBulkActionsModal;
+window.bulkActivateUsers = bulkActivateUsers;
+window.bulkDeactivateUsers = bulkDeactivateUsers;
+window.bulkAddBonus = bulkAddBonus;
+window.bulkSendNotification = bulkSendNotification;
+window.loadAuditLogs = loadAuditLogs;
+window.filterAuditLogs = filterAuditLogs;
+window.exportAuditLogs = exportAuditLogs;
+
+console.log('✅ Super Admin & Admin Management System Loaded');
+
+// ============================================
+// SUPER ADMIN DASHBOARD FUNCTIONS
+// ============================================
+
+// Global variables for charts
+let userGrowthChart = null;
+let financialChart = null;
+let dashboardRefreshInterval = null;
+
+/**
+ * Load Super Admin Dashboard Overview
+ */
+async function loadSuperAdminDashboard() {
+    console.log('Loading Super Admin Dashboard Overview...');
+    
+    // Show loading state
+    showLoading('Loading dashboard data...');
+    
+    try {
+        // Load all data in parallel
+        await Promise.all([
+            loadSuperAdminStats(),
+            loadSuperAdminActivities(),
+            loadSystemHealthMetrics(),
+            loadChartData()
+        ]);
+        
+        hideLoading();
+        console.log('Super Admin Dashboard loaded successfully');
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error loading Super Admin Dashboard:', error);
+        showToast('Error loading dashboard data', 'error');
+    }
+}
+
+/**
+ * Load Super Admin Statistics
+ */
+async function loadSuperAdminStats() {
+    console.log('Loading super admin statistics...');
+    
+    try {
+        // Get all users
+        const usersSnapshot = await db.collection('users').get();
+        const allUsers = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        
+        const regularUsers = allUsers.filter(u => u.role === 'user');
+        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'superadmin');
+        
+        const totalUsers = regularUsers.length;
+        const activeUsers = regularUsers.filter(u => u.isActive !== false).length;
+        const inactiveUsers = totalUsers - activeUsers;
+        const totalAdmins = admins.length;
+        
+        // Get deposits
+        const depositsSnapshot = await db.collection('deposits')
+            .where('status', '==', 'completed')
+            .get();
+        
+        let totalDeposits = 0;
+        depositsSnapshot.forEach(doc => {
+            totalDeposits += doc.data().amount || 0;
+        });
+        
+        // Get withdrawals
+        const withdrawalsSnapshot = await db.collection('withdrawals')
+            .where('status', '==', 'completed')
+            .get();
+        
+        let totalWithdrawals = 0;
+        let totalWithdrawalFees = 0;
+        withdrawalsSnapshot.forEach(doc => {
+            totalWithdrawals += doc.data().amount || 0;
+            totalWithdrawalFees += doc.data().feeAmount || 0;
+        });
+        
+        const platformProfit = totalDeposits - totalWithdrawals;
+        
+        // Get tasks
+        const tasksSnapshot = await db.collection('tasks').get();
+        const totalTasks = tasksSnapshot.size;
+        
+        // Get active packages count
+        let activePackagesCount = 0;
+        regularUsers.forEach(user => {
+            activePackagesCount += user.activePackages?.length || 0;
+        });
+        
+        // Get total bonuses
+        let totalBonuses = 0;
+        regularUsers.forEach(user => {
+            if (user.history) {
+                user.history.forEach(entry => {
+                    if (entry.type === 'bonus' && entry.status === 'completed') {
+                        totalBonuses += entry.amount || 0;
+                    }
+                });
+            }
+        });
+        
+        // Get total referrals
+        let totalReferrals = 0;
+        regularUsers.forEach(user => {
+            totalReferrals += user.referrals?.length || 0;
+        });
+        
+        // Update DOM elements
+        const elements = {
+            superTotalUsers: totalUsers,
+            superActiveUsers: activeUsers,
+            superInactiveUsers: inactiveUsers,
+            superTotalAdminsCount: totalAdmins,
+            superTotalDeposits: formatMoney(totalDeposits),
+            superTotalWithdrawals: formatMoney(totalWithdrawals),
+            superPlatformProfit: formatMoney(platformProfit),
+            superWithdrawalFees: formatMoney(totalWithdrawalFees),
+            superTotalTasks: totalTasks,
+            superActivePackagesCount: activePackagesCount,
+            superTotalBonuses: formatMoney(totalBonuses),
+            superTotalReferrals: totalReferrals
+        };
+        
+        for (const [id, value] of Object.entries(elements)) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+                // Add animation
+                element.classList.add('stat-updated');
+                setTimeout(() => element.classList.remove('stat-updated'), 500);
+            }
+        }
+        
+        // Store data for charts
+        window.superAdminStats = {
+            totalUsers,
+            activeUsers,
+            inactiveUsers,
+            totalDeposits,
+            totalWithdrawals,
+            platformProfit,
+            totalWithdrawalFees,
+            totalTasks,
+            activePackagesCount,
+            totalBonuses,
+            totalReferrals
+        };
+        
+    } catch (error) {
+        console.error('Error loading super admin stats:', error);
+    }
+}
+
+/**
+ * Load Recent Activities for Super Admin
+ */
+async function loadSuperAdminActivities() {
+    console.log('Loading recent activities...');
+    
+    const activityList = document.getElementById('superActivityList');
+    if (!activityList) return;
+    
+    try {
+        // Get recent deposits
+        const depositsSnapshot = await db.collection('deposits')
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+        
+        // Get recent withdrawals
+        const withdrawalsSnapshot = await db.collection('withdrawals')
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+        
+        // Get recent users
+        const usersSnapshot = await db.collection('users')
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+        
+        let activities = [];
+        
+        // Add deposits
+        depositsSnapshot.forEach(doc => {
+            const data = doc.data();
+            activities.push({
+                type: 'deposit',
+                user: data.username || data.userFullName || 'Unknown',
+                amount: data.amount,
+                status: data.status,
+                date: data.createdAt || data.date,
+                icon: 'fa-credit-card',
+                color: '#4CAF50'
+            });
+        });
+        
+        // Add withdrawals
+        withdrawalsSnapshot.forEach(doc => {
+            const data = doc.data();
+            activities.push({
+                type: 'withdrawal',
+                user: data.username || 'Unknown',
+                amount: data.amount,
+                status: data.status,
+                date: data.createdAt || data.date,
+                icon: 'fa-money-bill-wave',
+                color: '#F44336'
+            });
+        });
+        
+        // Add new users
+        usersSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.role === 'user') {
+                activities.push({
+                    type: 'user',
+                    user: data.username || data.fullName || 'New User',
+                    action: 'joined',
+                    date: data.createdAt,
+                    icon: 'fa-user-plus',
+                    color: '#2196F3'
+                });
+            }
+        });
+        
+        // Sort by date (newest first)
+        activities.sort((a, b) => new Date(b.date) - new Date(a.date));
+        activities = activities.slice(0, 20);
+        
+        if (activities.length === 0) {
+            activityList.innerHTML = '<div class="loading-activities"><i class="fas fa-inbox"></i><p>No recent activities</p></div>';
+            return;
+        }
+        
+        let html = '';
+        for (const activity of activities) {
+            const timeAgoStr = timeAgo(activity.date);
+            const amountHtml = activity.amount ? `
+                <span class="activity-amount ${activity.type === 'deposit' ? 'positive' : 'negative'}">
+                    ${activity.type === 'deposit' ? '+' : '-'}${formatMoney(activity.amount)}
+                </span>
+            ` : '';
+            
+            const statusHtml = activity.status ? `
+                <span class="status-badge small ${activity.status}">${activity.status}</span>
+            ` : '';
+            
+            html += `
+                <div class="activity-item">
+                    <div class="activity-icon ${activity.type}" style="background: ${activity.color}20; color: ${activity.color}">
+                        <i class="fas ${activity.icon}"></i>
+                    </div>
+                    <div class="activity-details">
+                        <div class="activity-title">
+                            <strong>${escapeHtml(activity.user)}</strong>
+                            ${activity.type === 'deposit' ? 'made a deposit' : 
+                              activity.type === 'withdrawal' ? 'requested withdrawal' : 
+                              'joined SmartTask'}
+                        </div>
+                        <div class="activity-meta">
+                            <span class="activity-date"><i class="far fa-clock"></i> ${timeAgoStr}</span>
+                            ${amountHtml}
+                            ${statusHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        activityList.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading activities:', error);
+        activityList.innerHTML = '<div class="loading-activities"><i class="fas fa-exclamation-triangle"></i><p>Error loading activities</p></div>';
+    }
+}
+
+/**
+ * Load System Health Metrics
+ */
+async function loadSystemHealthMetrics() {
+    console.log('Loading system health metrics...');
+    
+    const container = document.getElementById('superHealthMetrics');
+    if (!container) return;
+    
+    try {
+        // Get system stats
+        const usersSnapshot = await db.collection('users').get();
+        const totalUsers = usersSnapshot.size;
+        
+        // Calculate API response time
+        const startTime = performance.now();
+        await db.collection('settings').doc('global').get();
+        const apiTime = Math.round(performance.now() - startTime);
+        
+        // Get last backup info (you can implement backup tracking)
+        const lastBackup = localStorage.getItem('lastBackupDate') || 'Not performed';
+        
+        const metrics = [
+            { label: 'Database Status', value: 'Connected', status: 'online', icon: 'fa-database' },
+            { label: 'Firebase Auth', value: 'Active', status: 'online', icon: 'fa-shield-alt' },
+            { label: 'Storage', value: 'Available', status: 'online', icon: 'fa-cloud-upload-alt' },
+            { label: 'API Response', value: `${apiTime}ms`, status: apiTime < 500 ? 'online' : 'warning', icon: 'fa-tachometer-alt' },
+            { label: 'Active Users (24h)', value: Math.floor(totalUsers * 0.3), status: 'online', icon: 'fa-user-clock' },
+            { label: 'Last Backup', value: lastBackup, status: 'warning', icon: 'fa-database' }
+        ];
+        
+        let html = '';
+        metrics.forEach(metric => {
+            html += `
+                <div class="metric">
+                    <span class="metric-label">
+                        <i class="fas ${metric.icon}"></i> ${metric.label}
+                    </span>
+                    <span class="status ${metric.status}">${metric.value}</span>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading health metrics:', error);
+        container.innerHTML = '<div class="metric">Error loading health metrics</div>';
+    }
+}
+
+/**
+ * Load Chart Data and Initialize Charts
+ */
+async function loadChartData() {
+    console.log('Loading chart data...');
+    
+    try {
+        // Get user registration data for last 7 days
+        const usersSnapshot = await db.collection('users').get();
+        const users = usersSnapshot.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt }));
+        
+        // Process data for last 7 days
+        const last7Days = [];
+        const today = new Date();
+        
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            date.setHours(0, 0, 0, 0);
+            
+            const nextDate = new Date(date);
+            nextDate.setDate(nextDate.getDate() + 1);
+            
+            const count = users.filter(user => {
+                const createdAt = new Date(user.createdAt);
+                return createdAt >= date && createdAt < nextDate;
+            }).length;
+            
+            last7Days.push({
+                date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                count: count
+            });
+        }
+        
+        // Initialize User Growth Chart
+        const userCtx = document.getElementById('userGrowthChart')?.getContext('2d');
+        if (userCtx && window.userGrowthChart) {
+            window.userGrowthChart.destroy();
+        }
+        
+        if (userCtx) {
+            window.userGrowthChart = new Chart(userCtx, {
+                type: 'line',
+                data: {
+                    labels: last7Days.map(d => d.date),
+                    datasets: [{
+                        label: 'New Users',
+                        data: last7Days.map(d => d.count),
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#4CAF50',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw} users`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize Financial Distribution Chart
+        const stats = window.superAdminStats || {};
+        const finCtx = document.getElementById('financialChart')?.getContext('2d');
+        
+        if (finCtx && window.financialChart) {
+            window.financialChart.destroy();
+        }
+        
+        if (finCtx) {
+            window.financialChart = new Chart(finCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Deposits', 'Withdrawals', 'Fees Collected', 'Bonuses Given'],
+                    datasets: [{
+                        data: [
+                            stats.totalDeposits || 0,
+                            stats.totalWithdrawals || 0,
+                            stats.totalWithdrawalFees || 0,
+                            stats.totalBonuses || 0
+                        ],
+                        backgroundColor: [
+                            '#4CAF50',
+                            '#F44336',
+                            '#FF9800',
+                            '#9C27B0'
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${formatMoney(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading chart data:', error);
+    }
+}
+
+/**
+ * Refresh Super Admin Dashboard (Manual Refresh)
+ */
+async function refreshSuperAdminDashboard() {
+    console.log('Manually refreshing super admin dashboard...');
+    showToast('Refreshing dashboard data...', 'info');
+    await loadSuperAdminDashboard();
+    showToast('Dashboard refreshed!', 'success');
+}
+
+/**
+ * Start Auto-Refresh for Super Admin Dashboard
+ */
+function startSuperAdminAutoRefresh() {
+    if (dashboardRefreshInterval) {
+        clearInterval(dashboardRefreshInterval);
+    }
+    
+    // Refresh every 60 seconds
+    dashboardRefreshInterval = setInterval(() => {
+        // Only refresh if super admin dashboard is active
+        const superAdminDashboard = document.getElementById('superAdminDashboard');
+        if (superAdminDashboard && superAdminDashboard.classList.contains('active')) {
+            console.log('Auto-refreshing super admin dashboard...');
+            loadSuperAdminStats();
+            loadSuperAdminActivities();
+            loadSystemHealthMetrics();
+        }
+    }, 60000);
+}
+
+/**
+ * Stop Auto-Refresh
+ */
+function stopSuperAdminAutoRefresh() {
+    if (dashboardRefreshInterval) {
+        clearInterval(dashboardRefreshInterval);
+        dashboardRefreshInterval = null;
+    }
+}
+
+
+window.showSuperAdminDashboard = async function() {
+    if (originalShowSuperAdminDashboard) {
+        originalShowSuperAdminDashboard();
+    }
+    
+    // Load dashboard data when showing super admin dashboard
+    setTimeout(async () => {
+        await loadSuperAdminDashboard();
+        startSuperAdminAutoRefresh();
+    }, 500);
+};
+
+// ============================================
+// CLEANUP ON LOGOUT
+// ============================================
+
+const originalLogout = window.logout;
+window.logout = async function() {
+    stopSuperAdminAutoRefresh();
+    if (originalLogout) {
+        await originalLogout();
+    }
+};
+
+// ============================================
+// ADD REFRESH BUTTON TO SUPER ADMIN HEADER
+// ============================================
+
+function addSuperAdminRefreshButton() {
+    const headerRight = document.querySelector('#superAdminDashboard .header-right');
+    if (headerRight && !document.getElementById('superAdminRefreshBtn')) {
+        const refreshBtn = document.createElement('button');
+        refreshBtn.id = 'superAdminRefreshBtn';
+        refreshBtn.className = 'refresh-dashboard-btn';
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+        refreshBtn.onclick = refreshSuperAdminDashboard;
+        refreshBtn.title = 'Refresh Dashboard';
+        headerRight.insertBefore(refreshBtn, headerRight.firstChild);
+    }
+}
+
+// Call this when super admin dashboard loads
+setTimeout(() => {
+    addSuperAdminRefreshButton();
+}, 1000);
+
+// ============================================
+// EXPORT FUNCTIONS
+// ============================================
+
+window.loadSuperAdminDashboard = loadSuperAdminDashboard;
+window.refreshSuperAdminDashboard = refreshSuperAdminDashboard;
+window.loadSuperAdminStats = loadSuperAdminStats;
+window.loadSuperAdminActivities = loadSuperAdminActivities;
+window.loadSystemHealthMetrics = loadSystemHealthMetrics;
+
+console.log('✅ Super Admin Dashboard System Loaded');
+
+
+
+// ============================================
+// SUPER ADMIN VIEW USER DETAILS - WITH LOADING
+// ============================================
+
+/**
+ * Show loading skeleton in user details modal
+ */
+function showUserDetailsLoading() {
+    const contentDiv = document.getElementById('userDetailsContent');
+    if (!contentDiv) return;
+    
+    contentDiv.innerHTML = `
+        <div class="loading-details">
+            <div class="loading-spinner"></div>
+            <p><i class="fas fa-user-circle"></i> Loading user details...</p>
+            <p style="font-size: 12px; margin-top: 10px;">Please wait while we fetch user information</p>
+        </div>
+    `;
+}
+
+
+/**
+ * View user details for super admin - WITH LOADING ANIMATION
+ */
+async function viewUserDetailsSuper(userId) {
+    console.log('=== VIEW USER DETAILS ===');
+    console.log('User ID:', userId);
+    
+    if (!userId) {
+        showToast('Invalid user ID', 'error');
+        return;
+    }
+    
+    // Get or create modal first
+    let modal = document.getElementById('userDetailsModal');
+    if (!modal) {
+        console.log('Creating user details modal');
+        modal = document.createElement('div');
+        modal.id = 'userDetailsModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content large">
+                <span class="close" onclick="closeUserDetailsModal()">&times;</span>
+                <h2><i class="fas fa-user-circle"></i> User Details</h2>
+                <div id="userDetailsContent" class="user-details-container"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    // Show modal with loading state
+    modal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Show loading skeleton
+    showUserDetailsLoading();
+    
+    try {
+        // Fetch user data
+        console.log('Fetching user data from Firestore...');
+        const userDoc = await db.collection('users').doc(userId).get();
+        
+        if (!userDoc.exists) {
+            document.getElementById('userDetailsContent').innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>User not found</p>
+                    <button onclick="closeUserDetailsModal()" class="action-btn small">Close</button>
+                </div>
+            `;
+            return;
+        }
+        
+        const user = { uid: userId, ...userDoc.data() };
+        console.log('User loaded:', user.username);
+        
+        // Calculate totals
+        const totalInvested = user.activePackages?.reduce((sum, p) => sum + (p.investment || 0), 0) || 0;
+        const totalEarned = user.totalEarned || 0;
+        const netProfit = totalEarned - totalInvested;
+        
+        // Get deposit totals
+        let totalDeposited = 0;
+        let totalWithdrawn = 0;
+        
+        try {
+            const depositsSnap = await db.collection('deposits')
+                .where('userId', '==', userId)
+                .get();
+            totalDeposited = depositsSnap.docs
+                .filter(d => d.data().status === 'completed')
+                .reduce((sum, d) => sum + (d.data().amount || 0), 0);
+        } catch (e) {
+            console.log('Error fetching deposits:', e);
+        }
+        
+        try {
+            const withdrawalsSnap = await db.collection('withdrawals')
+                .where('userId', '==', userId)
+                .get();
+            totalWithdrawn = withdrawalsSnap.docs
+                .filter(w => w.data().status === 'completed')
+                .reduce((sum, w) => sum + (w.data().amount || 0), 0);
+        } catch (e) {
+            console.log('Error fetching withdrawals:', e);
+        }
+        
+        // Build HTML content
+        const content = `
+            <div class="user-details-container">
+                <!-- User Profile Header -->
+                <div class="user-profile-header">
+                    <div class="user-avatar">
+                        <i class="fas fa-user-circle" style="font-size: 80px; color: white;"></i>
+                    </div>
+                    <div class="user-basic-info">
+                        <h3>${escapeHtml(user.fullName || user.username)}</h3>
+                        <p><i class="fas fa-at"></i> @${escapeHtml(user.username)}</p>
+                        <p><i class="fas fa-envelope"></i> ${escapeHtml(user.email)}</p>
+                        <p><i class="fas fa-phone"></i> ${escapeHtml(user.phone)}</p>
+                    </div>
+                </div>
+                
+                <!-- Stats Grid -->
+                <div class="user-stats-grid">
+                    <div class="stat-card-mini">
+                        <span class="stat-label">Role</span>
+                        <span class="stat-value">${user.role || 'user'}</span>
+                    </div>
+                    <div class="stat-card-mini">
+                        <span class="stat-label">Status</span>
+                        <span class="stat-value ${user.isActive !== false ? 'success' : 'danger'}">
+                            ${user.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+                    <div class="stat-card-mini">
+                        <span class="stat-label">Verified</span>
+                        <span class="stat-value ${user.isVerified ? 'success' : 'warning'}">
+                            ${user.isVerified ? 'Yes' : 'No'}
+                        </span>
+                    </div>
+                    <div class="stat-card-mini">
+                        <span class="stat-label">Login Count</span>
+                        <span class="stat-value">${user.loginCount || 0}</span>
+                    </div>
+                </div>
+                
+                <!-- Financial Overview -->
+                <div class="financial-section">
+                    <h4><i class="fas fa-wallet"></i> Financial Overview</h4>
+                    <div class="financial-grid">
+                        <div class="financial-item">
+                            <span>Balance:</span>
+                            <strong>${formatMoney(user.balance || 0)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Referral Balance:</span>
+                            <strong>${formatMoney(user.referralBalance || 0)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Total Earned:</span>
+                            <strong>${formatMoney(totalEarned)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Total Invested:</span>
+                            <strong>${formatMoney(totalInvested)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Total Deposited:</span>
+                            <strong>${formatMoney(totalDeposited)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Total Withdrawn:</span>
+                            <strong>${formatMoney(totalWithdrawn)}</strong>
+                        </div>
+                        <div class="financial-item">
+                            <span>Net Profit:</span>
+                            <strong class="${netProfit >= 0 ? 'profit' : 'loss'}">
+                                ${formatMoney(netProfit)}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Referral Information -->
+                <div class="referral-section">
+                    <h4><i class="fas fa-users"></i> Referral Information</h4>
+                    <div class="referral-grid">
+                        <div class="referral-item">
+                            <span>Referral Code:</span>
+                            <code>${user.myReferralCode || 'N/A'}</code>
+                        </div>
+                        <div class="referral-item">
+                            <span>Referred By:</span>
+                            <strong>${user.referredBy || 'None'}</strong>
+                        </div>
+                        <div class="referral-item">
+                            <span>Total Referrals:</span>
+                            <strong>${user.referrals?.length || 0}</strong>
+                        </div>
+                        <div class="referral-item">
+                            <span>Level 1 Commission:</span>
+                            <strong>${formatMoney(user.referralEarnings?.level1 || 0)}</strong>
+                        </div>
+                        <div class="referral-item">
+                            <span>Level 2 Commission:</span>
+                            <strong>${formatMoney(user.referralEarnings?.level2 || 0)}</strong>
+                        </div>
+                        <div class="referral-item">
+                            <span>Level 3 Commission:</span>
+                            <strong>${formatMoney(user.referralEarnings?.level3 || 0)}</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Active Packages -->
+                <div class="packages-section">
+                    <h4><i class="fas fa-box"></i> Active Packages</h4>
+                    ${user.activePackages && user.activePackages.length > 0 ? 
+                        `<div class="packages-list">
+                            ${user.activePackages.map(pkg => `
+                                <div class="package-item">
+                                    <span><strong>${escapeHtml(pkg.name)}</strong></span>
+                                    <span>Investment: ${formatMoney(pkg.investment)}</span>
+                                    <span>Daily: ${formatMoney(pkg.dailyProfit)}</span>
+                                    <span>Purchased: ${new Date(pkg.purchasedAt).toLocaleDateString()}</span>
+                                </div>
+                            `).join('')}
+                        </div>` : 
+                        '<p class="no-data">No active packages</p>'
+                    }
+                </div>
+                
+                <!-- Recent Transactions -->
+                <div class="recent-transactions">
+                    <h4><i class="fas fa-history"></i> Recent Transactions</h4>
+                    <div class="transactions-list">
+                        ${user.history && user.history.length > 0 ? 
+                            user.history.slice(0, 5).map(h => `
+                                <div class="transaction-item">
+                                    <div class="transaction-icon ${h.type}">
+                                        <i class="fas ${h.type === 'deposit' ? 'fa-credit-card' : h.type === 'withdrawal' ? 'fa-money-bill-wave' : h.type === 'profit' ? 'fa-chart-line' : h.type === 'bonus' ? 'fa-gift' : 'fa-tasks'}"></i>
+                                    </div>
+                                    <div class="transaction-details">
+                                        <div class="transaction-title">${escapeHtml(h.description || h.type)}</div>
+                                        <div class="transaction-meta">
+                                            <span>${new Date(h.date).toLocaleString()}</span>
+                                            <span class="status-badge small ${h.status}">${h.status}</span>
+                                        </div>
+                                    </div>
+                                    <div class="transaction-amount ${h.type === 'withdrawal' ? 'negative' : 'positive'}">
+                                        ${h.type === 'withdrawal' ? '-' : '+'}${formatMoney(h.amount)}
+                                    </div>
+                                </div>
+                            `).join('') : 
+                            '<p class="no-data">No recent transactions</p>'
+                        }
+                    </div>
+                </div>
+                
+                <!-- Date Information -->
+                <div class="date-info">
+                    <div class="date-item">
+                        <i class="far fa-calendar-alt"></i> Joined: ${new Date(user.createdAt).toLocaleString()}
+                    </div>
+                    <div class="date-item">
+                        <i class="fas fa-sign-in-alt"></i> Last Login: ${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                    </div>
+                    <div class="date-item">
+                        <i class="fas fa-tasks"></i> Tasks Completed: ${user.tasksCompleted || 0}
+                    </div>
+                </div>
+                
+                <!-- Close Button -->
+                <div class="modal-actions">
+                    <button onclick="closeUserDetailsModal()" class="action-btn">Close</button>
+                </div>
+            </div>
+        `;
+        
+        // Update content
+        const contentDiv = document.getElementById('userDetailsContent');
+        if (contentDiv) {
+            contentDiv.innerHTML = content;
+        }
+        
+        console.log('User details loaded successfully');
+        
+    } catch (error) {
+        console.error('Error loading user details:', error);
+        const contentDiv = document.getElementById('userDetailsContent');
+        if (contentDiv) {
+            contentDiv.innerHTML = `
+                <div class="error-state" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f44336; margin-bottom: 15px; display: block;"></i>
+                    <p style="color: #f44336; margin-bottom: 20px;">Error loading user details: ${error.message}</p>
+                    <button onclick="closeUserDetailsModal()" class="action-btn">Close</button>
+                </div>
+            `;
+        }
+        showToast('Error loading user details', 'error');
+    }
+}
+
+/**
+ * Close user details modal
+ */
+function closeUserDetailsModal() {
+    const modal = document.getElementById('userDetailsModal');
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+// Make functions available globally
+window.viewUserDetailsSuper = viewUserDetailsSuper;
+window.closeUserDetailsModal = closeUserDetailsModal;

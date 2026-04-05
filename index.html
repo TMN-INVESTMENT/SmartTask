@@ -14,6 +14,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <!-- Chart.js for Charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -1310,57 +1312,110 @@
 
         <!-- Super Admin Main Content -->
         <div class="main-content" id="superAdminMainContent">
-            <div id="superAdminDashboardTab" class="tab-content active">
-                <h2>Super Admin Overview</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <i class="fas fa-users"></i>
-                        <div class="stat-info">
-                            <span class="stat-label">Total Users</span>
-                            <span class="stat-value" id="superTotalUsers">0</span>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-user-tie"></i>
-                        <div class="stat-info">
-                            <span class="stat-label">Total Admins</span>
-                            <span class="stat-value" id="totalAdmins">1</span>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-coins"></i>
-                        <div class="stat-info">
-                            <span class="stat-label">Total Volume</span>
-                            <span class="stat-value" id="totalVolume">0 TZS</span>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-chart-line"></i>
-                        <div class="stat-info">
-                            <span class="stat-label">Growth</span>
-                            <span class="stat-value" id="growthRate">+12%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="system-health">
-                    <h3>System Health</h3>
-                    <div class="health-metrics">
-                        <div class="metric">
-                            <span>Server Status</span>
-                            <span class="status online">Online</span>
-                        </div>
-                        <div class="metric">
-                            <span>Database</span>
-                            <span class="status online">Connected</span>
-                        </div>
-                        <div class="metric">
-                            <span>API Response</span>
-                            <span class="status">120ms</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <!-- Super Admin Dashboard Tab - Enhanced -->
+<div id="superAdminDashboardTab" class="tab-content active">
+    <h2><i class="fas fa-chart-pie"></i> Super Admin Overview</h2>
+    
+    <!-- Quick Stats Row -->
+    <div class="stats-row">
+        <div class="stat-mini-card">
+            <i class="fas fa-users"></i>
+            <span class="stat-label">Total Users</span>
+            <span class="stat-value" id="superTotalUsers">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-user-check"></i>
+            <span class="stat-label">Active Users</span>
+            <span class="stat-value" id="superActiveUsers">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-user-slash"></i>
+            <span class="stat-label">Inactive Users</span>
+            <span class="stat-value" id="superInactiveUsers">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-user-tie"></i>
+            <span class="stat-label">Total Admins</span>
+            <span class="stat-value" id="superTotalAdminsCount">0</span>
+        </div>
+    </div>
+    
+    <!-- Financial Stats Row -->
+    <div class="stats-row">
+        <div class="stat-mini-card">
+            <i class="fas fa-credit-card"></i>
+            <span class="stat-label">Total Deposits</span>
+            <span class="stat-value" id="superTotalDeposits">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-money-bill-wave"></i>
+            <span class="stat-label">Total Withdrawals</span>
+            <span class="stat-value" id="superTotalWithdrawals">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-chart-line"></i>
+            <span class="stat-label">Platform Profit</span>
+            <span class="stat-value" id="superPlatformProfit">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-percent"></i>
+            <span class="stat-label">Withdrawal Fees</span>
+            <span class="stat-value" id="superWithdrawalFees">0 TZS</span>
+        </div>
+    </div>
+    
+    <!-- Additional Stats Row -->
+    <div class="stats-row">
+        <div class="stat-mini-card">
+            <i class="fas fa-tasks"></i>
+            <span class="stat-label">Total Tasks</span>
+            <span class="stat-value" id="superTotalTasks">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-box"></i>
+            <span class="stat-label">Active Packages</span>
+            <span class="stat-value" id="superActivePackagesCount">0</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-gift"></i>
+            <span class="stat-label">Total Bonuses</span>
+            <span class="stat-value" id="superTotalBonuses">0 TZS</span>
+        </div>
+        <div class="stat-mini-card">
+            <i class="fas fa-users"></i>
+            <span class="stat-label">Total Referrals</span>
+            <span class="stat-value" id="superTotalReferrals">0</span>
+        </div>
+    </div>
+    
+    <!-- Charts Section -->
+    <div class="charts-section">
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-bar"></i> User Growth</h3>
+            <canvas id="userGrowthChart" width="400" height="200"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-pie"></i> Financial Distribution</h3>
+            <canvas id="financialChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+    
+    <!-- Recent Activities -->
+    <div class="recent-activities">
+        <h3><i class="fas fa-history"></i> Recent Activities</h3>
+        <div class="activity-list" id="superActivityList">
+            <div class="loading-activities">Loading activities...</div>
+        </div>
+    </div>
+    
+    <!-- System Health -->
+    <div class="system-health">
+        <h3><i class="fas fa-heartbeat"></i> System Health</h3>
+        <div class="health-metrics" id="superHealthMetrics">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+</div>
             
             <!-- Admin Management Tab -->
 <div id="superAdminAdminsTab" class="tab-content">
@@ -3012,6 +3067,298 @@
                 <button type="button" onclick="closeSocialLinkFormModal()" class="auth-btn secondary">Cancel</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Super Admin - Add Admin Modal -->
+<div id="addAdminModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddAdminModal()">&times;</span>
+        <h2><i class="fas fa-user-plus"></i> Add New Admin</h2>
+        <form id="addAdminForm" onsubmit="event.preventDefault(); createNewAdmin();">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="adminFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="adminUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="adminEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone *</label>
+                <input type="tel" id="adminPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Password *</label>
+                <input type="password" id="adminPassword" required minlength="6">
+                <button type="button" class="password-toggle-btn" data-target="adminPassword">
+                    <i class="fas fa-eye"></i>
+                    <span class="toggle-text">Show</span>
+                </button>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="adminRole">
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Super Admin</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Create Admin</button>
+                <button type="button" onclick="closeAddAdminModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Super Admin - Edit Admin Modal -->
+<div id="editAdminModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditAdminModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit Admin</h2>
+        <form id="editAdminForm" onsubmit="event.preventDefault(); saveAdminEdits();">
+            <input type="hidden" id="editAdminId">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="editAdminFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="editAdminUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="editAdminEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone *</label>
+                <input type="tel" id="editAdminPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="editAdminRole">
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Super Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editAdminStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditAdminModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Admin Details Modal -->
+<div id="adminDetailsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAdminDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-shield"></i> Admin Details</h2>
+        <div id="adminDetailsContent" class="admin-details-content">
+            <div class="loading">Loading admin details...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Actions Modal -->
+<div id="bulkActionsModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeBulkActionsModal()">&times;</span>
+        <h2><i class="fas fa-layer-group"></i> Bulk Actions</h2>
+        <div class="bulk-actions-container">
+            <p>Selected Users: <strong id="selectedCount">0</strong></p>
+            <div class="action-buttons">
+                <button onclick="bulkActivateUsers()" class="action-btn success">
+                    <i class="fas fa-check-circle"></i> Activate Selected
+                </button>
+                <button onclick="bulkDeactivateUsers()" class="action-btn warning">
+                    <i class="fas fa-ban"></i> Deactivate Selected
+                </button>
+                <button onclick="bulkAddBonus()" class="action-btn info">
+                    <i class="fas fa-gift"></i> Add Bonus
+                </button>
+                <button onclick="bulkSendNotification()" class="action-btn primary">
+                    <i class="fas fa-bell"></i> Send Notification
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Transactions Modal -->
+<div id="userTransactionsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserTransactionsModal()">&times;</span>
+        <h2><i class="fas fa-history"></i> User Transactions</h2>
+        <div id="userTransactionsContent" class="user-transactions-list">
+            <div class="loading">Loading transactions...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddBalanceModal()">&times;</span>
+        <h2><i class="fas fa-plus-circle"></i> Add Balance</h2>
+        <form id="addBalanceForm" onsubmit="event.preventDefault(); processAddBalance();">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="balanceUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Balance</label>
+                <input type="text" id="balanceCurrentBalance" readonly>
+            </div>
+            <div class="form-group">
+                <label>Amount to Add (TZS)</label>
+                <input type="number" id="balanceAmount" required min="1" step="100">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="balanceReason" placeholder="e.g., Bonus, Correction">
+            </div>
+            <div class="form-group">
+                <label>Add to</label>
+                <select id="balanceType">
+                    <option value="main">Main Balance</option>
+                    <option value="referral">Referral Balance</option>
+                    <option value="both">Both (Split equally)</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Add Balance</button>
+                <button type="button" onclick="closeAddBalanceModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- User Details Modal - Super Admin -->
+<div id="userDetailsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserDetailsModal()">&times;</span>
+        <h2><i class="fas fa-user-circle"></i> User Details</h2>
+        <div id="userDetailsContent" class="user-details-container">
+            <div class="loading-details">
+                <i class="fas fa-spinner fa-spin"></i> Loading user details...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeEditUserModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Edit User</h2>
+        <form id="editUserForm" onsubmit="event.preventDefault(); saveUserEdits();">
+            <input type="hidden" id="editUserId">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="editFullName" required>
+            </div>
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="editUsername" required>
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="editEmail" required>
+            </div>
+            <div class="form-group">
+                <label>Phone *</label>
+                <input type="tel" id="editPhone" required>
+            </div>
+            <div class="form-group">
+                <label>Balance (TZS)</label>
+                <input type="number" id="editBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Referral Balance (TZS)</label>
+                <input type="number" id="editReferralBalance" step="100">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editStatus">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Verification Status</label>
+                <select id="editVerified">
+                    <option value="true">Verified</option>
+                    <option value="false">Not Verified</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Save Changes</button>
+                <button type="button" onclick="closeEditUserModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeAddBalanceModal()">&times;</span>
+        <h2><i class="fas fa-plus-circle"></i> Add Balance</h2>
+        <form id="addBalanceForm" onsubmit="event.preventDefault(); processAddBalance();">
+            <input type="hidden" id="balanceUserId">
+            <div class="form-group">
+                <label>User</label>
+                <input type="text" id="balanceUserName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Balance</label>
+                <input type="text" id="balanceCurrentBalance" readonly>
+            </div>
+            <div class="form-group">
+                <label>Amount to Add (TZS)</label>
+                <input type="number" id="balanceAmount" required min="1" step="100">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" id="balanceReason" placeholder="e.g., Bonus, Correction">
+            </div>
+            <div class="form-group">
+                <label>Add to</label>
+                <select id="balanceType">
+                    <option value="main">Main Balance</option>
+                    <option value="referral">Referral Balance</option>
+                    <option value="both">Both (Split equally)</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">Add Balance</button>
+                <button type="button" onclick="closeAddBalanceModal()" class="auth-btn secondary">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- User Transactions Modal -->
+<div id="userTransactionsModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeUserTransactionsModal()">&times;</span>
+        <h2><i class="fas fa-history"></i> User Transactions</h2>
+        <div id="userTransactionsContent" class="user-transactions-list">
+            <div class="loading">Loading transactions...</div>
+        </div>
     </div>
 </div>
 
