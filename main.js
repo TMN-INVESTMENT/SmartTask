@@ -1389,9 +1389,13 @@ async function handleSignup() {
         return;
     }
     
-    // Check if referral code is valid
+    // Check if referral code is valid and get referrer details
     let referrer = null;
+    let referrerData = null;
+    
     if (referral && referral.trim() !== '') {
+        console.log('🔍 Checking referral code:', referral);
+        
         const refCheck = await db.collection('users')
             .where('myReferralCode', '==', referral)
             .limit(1)
@@ -1399,8 +1403,13 @@ async function handleSignup() {
         
         if (!refCheck.empty) {
             referrer = refCheck.docs[0];
-            console.log('Valid referral code found:', referral);
+            referrerData = referrer.data();
+            console.log('✅ Valid referral code found! Referrer:', referrerData.username, 'ID:', referrer.id);
+            
+            // Show success message to user
+            showToast(`🎉 Referred by ${referrerData.username}! You'll both get bonuses!`, 'success');
         } else {
+            console.log('❌ Invalid referral code:', referral);
             showToast('Invalid referral code. You can still register without it.', 'warning');
             referral = null;
         }
@@ -1442,10 +1451,10 @@ async function handleSignup() {
         if (email === 'smart@task.com') role = 'admin';
         else if (email === 'kingharuni420@gmail.com') role = 'superadmin';
         
-        // Generate unique referral code (random, not based on username)
+        // Generate unique referral code
         const myReferralCode = await generateUniqueReferralCode();
         
-        // Create user document in Firestore
+        // Create user document in Firestore with COMPLETE referral tracking
         const newUser = {
             // Basic Information
             uid: uid,
@@ -1467,21 +1476,36 @@ async function handleSignup() {
             totalEarned: systemSettings.registrationBonus,
             totalInvested: 0,
             
-            // Referral Information
+            // ============================================
+            // REFERRAL INFORMATION - COMPLETE TRACKING
+            // ============================================
             referralEarnings: {
                 level1: 0,
                 level2: 0,
                 level3: 0
             },
-            referrals: [],
+            referrals: [], // Array of users this person referred
             myReferralCode: myReferralCode,
+            
+            // Who referred THIS user (for first deposit bonus)
             referredBy: referrer ? referrer.id : null,
+            referredByUsername: referrerData ? referrerData.username : null,
+            referredByCode: referral || null,
+            referredAt: referrer ? new Date().toISOString() : null,
+            
+            // First deposit bonus tracking
+            firstDepositBonusGiven: false,
+            firstDepositBonusAmount: 0,
+            firstDepositBonusPaidTo: null,
+            firstDepositBonusPaidAt: null,
             
             // Task Information
             tasksCompleted: 0,
             lastTaskDate: null,
             completedTasks: [],
             activePackages: [],
+            dailyTasks: [],
+            dailyTasksDate: null,
             
             // Transaction History
             history: [{
@@ -1497,11 +1521,14 @@ async function handleSignup() {
             notifications: [{
                 id: generateId(),
                 title: '🎉 Welcome to SmartTask!',
-                message: `Thank you for joining! You've received ${formatMoney(systemSettings.registrationBonus)} as a registration bonus.`,
+                message: `Thank you for joining! You've received ${formatMoney(systemSettings.registrationBonus)} as a registration bonus.${referrerData ? ` You were referred by ${referrerData.username}!` : ''}`,
                 type: 'success',
                 read: false,
                 date: new Date().toISOString()
             }],
+            
+            // Bank Accounts for withdrawals
+            bankAccounts: [],
             
             // Dates
             createdAt: new Date().toISOString(),
@@ -1509,6 +1536,7 @@ async function handleSignup() {
             
             // Login Information
             loginCount: 1,
+            lastWithdrawalDate: null,
             
             // Weekly Commission System
             weeklyCommission: {
@@ -1522,24 +1550,95 @@ async function handleSignup() {
                 commissionHistory: [],
                 pendingCommission: 0,
                 weeklyTaskEarnings: 0
-            }
+            },
+            
+            // Social Links Tracking
+            followedSocialLinks: []
         };
         
+        // Save user to Firestore
         await db.collection('users').doc(uid).set(newUser);
+        console.log('✅ User created successfully with referral tracking');
         
-        // Process referral commission if applicable
+        // ============================================
+        // UPDATE REFERRER'S REFERRALS ARRAY
+        // ============================================
         if (referrer) {
-            await processReferralCommission(referrer.id, uid, username);
+            console.log('📊 Updating referrer\'s referrals array...');
+            
+            // Add this user to referrer's referrals array
+            await db.collection('users').doc(referrer.id).update({
+                referrals: firebase.firestore.FieldValue.arrayUnion({
+                    userId: uid,
+                    username: username,
+                    fullName: fullName,
+                    email: email,
+                    phone: phone,
+                    joinedAt: new Date().toISOString(),
+                    status: 'active',
+                    level: 1,
+                    firstDepositMade: false,
+                    firstDepositAmount: 0,
+                    bonusPaid: false
+                })
+            });
+            
+            // Send notification to referrer about new referral
+            await addNotification(
+                referrer.id,
+                '🎉 New Referral Joined!',
+                `${username} joined using your referral link! You'll earn 10% when they make their first deposit.`,
+                'success'
+            );
+            
+            console.log(`✅ Referrer ${referrerData.username} updated with new referral`);
+            
+            // ============================================
+            // PROCESS REGISTRATION BONUS FOR REFERRER (Optional)
+            // If you want to give instant bonus for referral (not just deposit)
+            // ============================================
+            const registrationBonus = systemSettings.registrationBonus * 0.10; // 10% of registration bonus
+            if (registrationBonus > 0) {
+                await db.collection('users').doc(referrer.id).update({
+                    referralBalance: firebase.firestore.FieldValue.increment(registrationBonus),
+                    totalEarned: firebase.firestore.FieldValue.increment(registrationBonus),
+                    'referralEarnings.level1': firebase.firestore.FieldValue.increment(registrationBonus),
+                    history: firebase.firestore.FieldValue.arrayUnion({
+                        id: generateId(),
+                        type: 'referral_bonus',
+                        description: `Registration bonus for referring ${username}`,
+                        amount: registrationBonus,
+                        status: 'completed',
+                        date: new Date().toISOString(),
+                        metadata: {
+                            referralId: uid,
+                            referralUsername: username,
+                            bonusType: 'registration'
+                        }
+                    })
+                });
+                
+                console.log(`✅ Referrer earned ${formatMoney(registrationBonus)} registration bonus`);
+            }
         }
         
         hideLoading();
-        showToast('✅ Registration successful! You received 2,000 TZS bonus!', 'success');
+        
+        // Show success message with referral info
+        let successMessage = '✅ Registration successful! You received 2,000 TZS bonus!';
+        if (referrerData) {
+            successMessage += `\n🎁 You were referred by ${referrerData.username}!`;
+            successMessage += `\n💰 They will earn 10% when you make your first deposit!`;
+        }
+        showToast(successMessage, 'success');
         
         // Clear URL parameters after successful signup
         if (window.history && window.history.pushState) {
             const newUrl = window.location.origin + window.location.pathname;
             window.history.pushState({}, '', newUrl);
         }
+        
+        // Auto-login is handled by auth state observer
         
     } catch (error) {
         hideLoading();
@@ -1551,6 +1650,8 @@ async function handleSignup() {
             showToast('Password is too weak.', 'error');
         } else if (error.code === 'auth/invalid-email') {
             showToast('Invalid email address.', 'error');
+        } else if (error.code === 'auth/network-request-failed') {
+            showToast('Network error. Please check your connection.', 'error');
         } else {
             showToast(error.message || 'An error occurred during registration', 'error');
         }
@@ -3815,95 +3916,6 @@ function loadSystemHealth() {
             <span class="metric-value">${Math.floor(Math.random() * 100 + 50)}ms</span>
         </div>
     `;
-}
-
-// ============================================
-// UPDATED DEPOSIT APPROVAL/REJECTION FUNCTIONS
-// ============================================
-
-/**
- * Approve a deposit request
- */
-async function approveDeposit(depositId) {
-    console.log('📝 approveDeposit called with ID:', depositId);
-    
-    let deposit = deposits.find(d => d.id === depositId);
-    if (!deposit) {
-        try {
-            const doc = await db.collection('deposits').doc(depositId).get();
-            if (doc.exists) deposit = { id: doc.id, ...doc.data() };
-        } catch (e) { console.error(e); }
-    }
-    if (!deposit) { showToast('Deposit not found', 'error'); return; }
-    if (deposit.status !== 'pending') { showToast('Already processed', 'warning'); return; }
-    
-    if (!confirm(`Approve ${formatMoney(deposit.amount)} for ${deposit.username}?`)) return;
-    showLoading('Processing deposit...');
-    
-    try {
-        // Check if this is the user's first completed deposit
-        const previousDeposits = await db.collection('deposits')
-            .where('userId', '==', deposit.userId)
-            .where('status', '==', 'completed')
-            .get();
-        const isFirstDeposit = previousDeposits.size === 0;
-        console.log(`Is first deposit: ${isFirstDeposit}`);
-        
-        // 1. Update deposit status
-        await db.collection('deposits').doc(depositId).update({
-            status: 'completed',
-            approvedAt: new Date().toISOString(),
-            approvedBy: currentUser?.uid || 'admin',
-            isFirstDeposit: isFirstDeposit
-        });
-        
-        // 2. Add money to user's balance
-        const userRef = db.collection('users').doc(deposit.userId);
-        await userRef.update({
-            balance: firebase.firestore.FieldValue.increment(deposit.amount),
-            totalEarned: firebase.firestore.FieldValue.increment(deposit.amount),
-            history: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                type: 'deposit',
-                description: `Deposit of ${formatMoney(deposit.amount)} approved`,
-                amount: deposit.amount,
-                status: 'completed',
-                date: new Date().toISOString(),
-                metadata: { depositId, isFirstDeposit }
-            })
-        });
-        
-        await addNotification(deposit.userId, '✅ Deposit Approved!',
-            `Your deposit of ${formatMoney(deposit.amount)} has been approved.`, 'success');
-        
-        // 3. Process first deposit bonus (10% to referrer)
-        let bonusGiven = false;
-        if (isFirstDeposit) {
-            console.log('🎯 FIRST DEPOSIT – attempting to give referrer bonus');
-            bonusGiven = await giveFirstDepositBonus(deposit.userId, deposit.amount);
-            if (bonusGiven) {
-                await db.collection('deposits').doc(depositId).update({
-                    firstDepositBonusGiven: true,
-                    firstDepositBonusAmount: deposit.amount * 0.10
-                });
-            }
-        }
-        
-        hideLoading();
-        let msg = `✅ Deposit of ${formatMoney(deposit.amount)} approved!`;
-        if (bonusGiven) msg += `\n🎁 Referrer earned 10% bonus!`;
-        showToast(msg, 'success');
-        
-        // Refresh data
-        await loadAdminData();
-        await loadDeposits();
-        if (currentUser && currentUser.uid === deposit.userId) await loadUserData();
-        
-    } catch (error) {
-        hideLoading();
-        console.error('❌ Error in approveDeposit:', error);
-        showToast('Error: ' + error.message, 'error');
-    }
 }
 
 /**
@@ -15939,28 +15951,38 @@ window.showSuperAdminDashboard = function() {
     setTimeout(() => initSuperAdmin(), 100);
 };
 
-// Override switchSuperAdminTab to load data when switching tabs
+// Update the switchSuperAdminTab function to load data when switching tabs
 const originalSwitchSuperAdminTab = window.switchSuperAdminTab;
-window.switchSuperAdminTab = function(tabName) {
-    if (originalSwitchSuperAdminTab) originalSwitchSuperAdminTab(tabName);
+window.switchSuperAdminTab = async function(tabName) {
+    console.log('Switching to super admin tab:', tabName);
     
-    setTimeout(() => {
+    // Call original function if it exists
+    if (originalSwitchSuperAdminTab) {
+        originalSwitchSuperAdminTab(tabName);
+    }
+    
+    // Load data based on selected tab
+    setTimeout(async () => {
         if (tabName === 'admins') {
-            loadAdminsList();
+            console.log('Loading admins list...');
+            await loadAdminsList();
         } else if (tabName === 'allUsers') {
-            loadAllUsers();
+            console.log('Loading all users list...');
+            await loadAllUsers();
+        } else if (tabName === 'dashboard') {
+            await loadSuperAdminDashboard();
         } else if (tabName === 'audit') {
-            loadAuditLogs();
+            await loadAuditLogs();
         } else if (tabName === 'system') {
-            loadSystemSettingsForSuper();
+            await loadSystemSettingsForSuper();
         } else if (tabName === 'packages') {
-            loadPackagesManagement();
+            await loadPackagesManagement();
         } else if (tabName === 'transactions') {
-            loadAllTransactions();
+            await loadAllTransactions();
         } else if (tabName === 'announcements') {
-            loadSuperAnnouncements();
+            await loadSuperAnnouncements();
         } else if (tabName === 'logs') {
-            loadSystemLogs();
+            await loadSystemLogs();
         }
     }, 100);
 };
@@ -24311,251 +24333,417 @@ window.updateSocialIconPreview = updateSocialIconPreview;
 
 console.log('✅ Social Links System Loaded - Auto popup every 3 minutes');
 
-// ============================================
-// COMPLETE WORKING FIRST DEPOSIT BONUS SYSTEM
-// ============================================
-
 /**
- * GIVE FIRST DEPOSIT BONUS TO REFERRER
- * Called when a user makes their first deposit
- * @param {string} userId - The user who made the deposit
- * @param {number} depositAmount - The amount deposited
- * @returns {Promise<Object>} - Result object
+ * Load all users for super admin panel
  */
-async function giveFirstDepositBonus(userId, depositAmount) {
-    console.log('=========================================');
-    console.log('🎁 GIVE FIRST DEPOSIT BONUS - STARTED');
-    console.log('User ID:', userId);
-    console.log('Deposit Amount:', depositAmount);
-    console.log('=========================================');
+async function loadAllUsers() {
+    console.log('Loading all users for super admin...');
     
-    const result = {
-        success: false,
-        bonusAmount: 0,
-        message: '',
-        referrerId: null,
-        referrerName: null
-    };
+    const tbody = document.getElementById('superAllUsersTableBody');
+    if (!tbody) return;
+    
+    showLoading('Loading users...');
     
     try {
-        // STEP 1: Get the user who made the deposit
-        const userDoc = await db.collection('users').doc(userId).get();
-        if (!userDoc.exists) {
-            result.message = 'User not found';
-            console.error('❌', result.message);
-            return result;
+        // Fetch users from Firestore
+        const usersSnapshot = await db.collection('users')
+            .where('role', '==', 'user')
+            .get();
+        
+        const users = usersSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data()
+        }));
+        
+        // Update stats
+        const activeUsers = users.filter(u => u.isActive !== false).length;
+        const totalBalance = users.reduce((sum, u) => sum + (u.balance || 0) + (u.referralBalance || 0), 0);
+        
+        const totalUsersEl = document.getElementById('superTotalUsersCount');
+        const activeUsersEl = document.getElementById('superActiveUsersCount');
+        const totalBalanceEl = document.getElementById('superTotalBalance');
+        
+        if (totalUsersEl) totalUsersEl.textContent = users.length;
+        if (activeUsersEl) activeUsersEl.textContent = activeUsers;
+        if (totalBalanceEl) totalBalanceEl.textContent = formatMoney(totalBalance);
+        
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No users found</td></tr>';
+            hideLoading();
+            return;
         }
         
-        const userData = userDoc.data();
-        console.log('User:', userData.username);
-        console.log('Email:', userData.email);
-        
-        // STEP 2: Check if user has a referrer
-        if (!userData.referredBy) {
-            result.message = 'No referrer found - skipping bonus';
-            console.log('ℹ️', result.message);
-            return result;
+        let html = '';
+        for (const user of users) {
+            const totalInvested = user.activePackages?.reduce((sum, p) => sum + p.investment, 0) || 0;
+            
+            html += `
+                <tr>
+                    <td>
+                        <div class="user-info">
+                            <i class="fas fa-user-circle"></i>
+                            <div>
+                                <strong>${escapeHtml(user.fullName || user.username)}</strong>
+                                <small>@${escapeHtml(user.username)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <small>${escapeHtml(user.email)}</small><br>
+                        <small>${escapeHtml(user.phone)}</small>
+                    </td>
+                    <td>${formatMoney(user.balance || 0)}</td>
+                    <td>${user.referrals?.length || 0}</td>
+                    <td>${user.activePackages?.length || 0}</td>
+                    <td>
+                        <span class="status-badge ${user.isActive !== false ? 'success' : 'danger'}">
+                            ${user.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+                    <td class="action-buttons">
+                        <button class="action-btn small" onclick="viewUserDetailsSuper('${user.uid}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="action-btn small" onclick="editUserAccount('${user.uid}')" title="Edit User">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn small ${user.isActive !== false ? 'warning' : 'success'}" 
+                            onclick="toggleUserStatusSuper('${user.uid}')" 
+                            title="${user.isActive !== false ? 'Deactivate' : 'Activate'}">
+                            <i class="fas ${user.isActive !== false ? 'fa-ban' : 'fa-check'}"></i>
+                        </button>
+                        <button class="action-btn small danger" onclick="deleteUserAccountSuper('${user.uid}')" title="Delete User">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
         }
         
-        const referrerId = userData.referredBy;
-        result.referrerId = referrerId;
-        console.log('Referrer ID:', referrerId);
-        
-        // STEP 3: Check if bonus already given
-        if (userData.firstDepositBonusGiven === true) {
-            result.message = 'Bonus already given to referrer';
-            console.log('ℹ️', result.message);
-            return result;
-        }
-        
-        // STEP 4: Calculate 10% bonus
-        const bonusAmount = depositAmount * 0.10;
-        if (bonusAmount <= 0) {
-            result.message = 'Bonus amount is zero';
-            console.log('ℹ️', result.message);
-            return result;
-        }
-        
-        result.bonusAmount = bonusAmount;
-        console.log('Bonus Amount:', formatMoney(bonusAmount));
-        
-        // STEP 5: Get referrer data
-        const referrerRef = db.collection('users').doc(referrerId);
-        const referrerDoc = await referrerRef.get();
-        
-        if (!referrerDoc.exists) {
-            result.message = 'Referrer document not found';
-            console.error('❌', result.message);
-            return result;
-        }
-        
-        const referrerData = referrerDoc.data();
-        result.referrerName = referrerData.username;
-        console.log('Referrer:', referrerData.username);
-        console.log('Current referralBalance:', referrerData.referralBalance);
-        
-        // STEP 6: Create batch operation for atomic updates
-        const batch = db.batch();
-        
-        // 6a: Add bonus to referrer's referralBalance
-        batch.update(referrerRef, {
-            referralBalance: firebase.firestore.FieldValue.increment(bonusAmount),
-            totalEarned: firebase.firestore.FieldValue.increment(bonusAmount),
-            'referralEarnings.level1': firebase.firestore.FieldValue.increment(bonusAmount),
-            updatedAt: new Date().toISOString()
-        });
-        
-        // 6b: Add to referrer's history
-        batch.update(referrerRef, {
-            history: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                type: 'first_deposit_bonus',
-                description: `🎁 First Deposit Bonus (10%) from ${userData.username} - Deposit: ${formatMoney(depositAmount)}`,
-                amount: bonusAmount,
-                status: 'completed',
-                date: new Date().toISOString(),
-                metadata: {
-                    referralId: userId,
-                    referralUsername: userData.username,
-                    depositAmount: depositAmount,
-                    bonusPercentage: 10,
-                    timestamp: new Date().toISOString()
-                }
-            })
-        });
-        
-        // 6c: Add notification to referrer
-        batch.update(referrerRef, {
-            notifications: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                title: '💰 First Deposit Bonus!',
-                message: `Your referral ${userData.username} made their first deposit of ${formatMoney(depositAmount)}! You earned ${formatMoney(bonusAmount)} bonus!`,
-                type: 'success',
-                read: false,
-                date: new Date().toISOString()
-            })
-        });
-        
-        // 6d: Mark bonus as given on user's document
-        batch.update(db.collection('users').doc(userId), {
-            firstDepositBonusGiven: true,
-            firstDepositBonusAmount: bonusAmount,
-            firstDepositBonusPaidTo: referrerId,
-            firstDepositBonusPaidAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        });
-        
-        // 6e: Add to user's history
-        batch.update(db.collection('users').doc(userId), {
-            history: firebase.firestore.FieldValue.arrayUnion({
-                id: generateId(),
-                type: 'referral_bonus_given',
-                description: `Your first deposit of ${formatMoney(depositAmount)} gave your referrer ${formatMoney(bonusAmount)} bonus`,
-                amount: depositAmount,
-                status: 'completed',
-                date: new Date().toISOString(),
-                metadata: {
-                    referrerId: referrerId,
-                    referrerName: referrerData.username,
-                    bonusAmount: bonusAmount,
-                    bonusPercentage: 10
-                }
-            })
-        });
-        
-        // 6f: Update referrer's referrals array
-        const referrals = referrerData.referrals || [];
-        let found = false;
-        
-        for (let i = 0; i < referrals.length; i++) {
-            if (referrals[i].userId === userId || referrals[i].username === userData.username) {
-                referrals[i].firstDepositAmount = depositAmount;
-                referrals[i].firstDepositBonus = bonusAmount;
-                referrals[i].firstDepositDate = new Date().toISOString();
-                referrals[i].firstDepositBonusGiven = true;
-                referrals[i].firstDepositBonusPaidAt = new Date().toISOString();
-                found = true;
-                break;
-            }
-        }
-        
-        if (!found) {
-            referrals.push({
-                userId: userId,
-                username: userData.username,
-                level: 1,
-                date: userData.createdAt || new Date().toISOString(),
-                commission: 0,
-                firstDepositAmount: depositAmount,
-                firstDepositBonus: bonusAmount,
-                firstDepositDate: new Date().toISOString(),
-                firstDepositBonusGiven: true,
-                firstDepositBonusPaidAt: new Date().toISOString()
-            });
-        }
-        
-        batch.update(referrerRef, { referrals: referrals });
-        
-        // STEP 7: Commit all updates
-        await batch.commit();
-        
-        result.success = true;
-        result.message = `Successfully added ${formatMoney(bonusAmount)} to ${referrerData.username}`;
-        
-        console.log('✅ SUCCESS!');
-        console.log(`   Bonus: ${formatMoney(bonusAmount)} added to ${referrerData.username}`);
-        console.log(`   New referralBalance: ${(referrerData.referralBalance || 0) + bonusAmount}`);
-        console.log('=========================================');
-        
-        // Show notification to referrer if online
-        if (currentUser && currentUser.uid === referrerId) {
-            setTimeout(() => {
-                showToast(`🎉 You earned ${formatMoney(bonusAmount)} from ${userData.username}'s first deposit!`, 'success');
-            }, 500);
-        }
-        
-        return result;
+        tbody.innerHTML = html;
         
     } catch (error) {
-        console.error('❌ ERROR in giveFirstDepositBonus:', error);
-        result.message = `Error: ${error.message}`;
-        return result;
+        console.error('Error loading users:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">Error loading users: ' + error.message + '</td></tr>';
+        showToast('Error loading users', 'error');
+    } finally {
+        hideLoading();
     }
 }
 
 /**
- * APPROVE DEPOSIT WITH AUTO FIRST DEPOSIT BONUS
- * This is the main function to call when approving a deposit
+ * Load admins list for super admin
  */
-async function approveDepositWithBonus(depositId) {
-    console.log('=========================================');
-    console.log('📝 APPROVE DEPOSIT WITH BONUS CHECK');
-    console.log('Deposit ID:', depositId);
-    console.log('=========================================');
+async function loadAdminsList() {
+    console.log('Loading admins list...');
     
-    // Find the deposit
-    let deposit = null;
+    const tbody = document.getElementById('superAdminsTableBody');
+    if (!tbody) return;
     
-    // Try to find in deposits array
-    if (deposits && deposits.length > 0) {
-        deposit = deposits.find(d => d.id === depositId);
-    }
+    showLoading('Loading admins...');
     
-    // If not found, fetch from Firestore
-    if (!deposit) {
-        try {
-            const depositDoc = await db.collection('deposits').doc(depositId).get();
-            if (depositDoc.exists) {
-                deposit = { id: depositDoc.id, ...depositDoc.data() };
-            }
-        } catch (error) {
-            console.error('Error fetching deposit:', error);
+    try {
+        // Fetch admins from Firestore (role = admin or superadmin)
+        const adminsSnapshot = await db.collection('users')
+            .where('role', 'in', ['admin', 'superadmin'])
+            .get();
+        
+        const admins = adminsSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data()
+        }));
+        
+        // Update stats
+        const totalAdmins = admins.length;
+        const activeAdmins = admins.filter(a => a.isActive !== false).length;
+        const superAdmins = admins.filter(a => a.role === 'superadmin').length;
+        
+        const totalEl = document.getElementById('superTotalAdmins');
+        const activeEl = document.getElementById('superActiveAdmins');
+        const superEl = document.getElementById('superSuperAdmins');
+        
+        if (totalEl) totalEl.textContent = totalAdmins;
+        if (activeEl) activeEl.textContent = activeAdmins;
+        if (superEl) superEl.textContent = superAdmins;
+        
+        if (admins.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No admins found</td></tr>';
+            hideLoading();
+            return;
         }
+        
+        let html = '';
+        for (const admin of admins) {
+            const lastLogin = admin.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never';
+            const roleBadge = admin.role === 'superadmin' ? 'superadmin-badge' : 'admin-badge';
+            
+            html += `
+                <tr>
+                    <td>
+                        <div class="user-info">
+                            <i class="fas ${admin.role === 'superadmin' ? 'fa-crown' : 'fa-user-shield'}"></i>
+                            <div>
+                                <strong>${escapeHtml(admin.fullName || admin.username)}</strong>
+                                <small>@${escapeHtml(admin.username)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(admin.email)}</td>
+                    <td><span class="role-badge ${roleBadge}">${admin.role}</span></td>
+                    <td>
+                        <span class="status-badge ${admin.isActive !== false ? 'success' : 'danger'}">
+                            ${admin.isActive !== false ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${lastLogin}</td>
+                    <td class="action-buttons">
+                        <button class="action-btn small" onclick="viewAdminDetails('${admin.uid}')" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        ${admin.role !== 'superadmin' ? `
+                            <button class="action-btn small" onclick="editAdmin('${admin.uid}')" title="Edit Admin">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="action-btn small ${admin.isActive !== false ? 'warning' : 'success'}" 
+                                onclick="toggleAdminStatus('${admin.uid}')" 
+                                title="${admin.isActive !== false ? 'Deactivate' : 'Activate'}">
+                                <i class="fas ${admin.isActive !== false ? 'fa-ban' : 'fa-check'}"></i>
+                            </button>
+                            <button class="action-btn small danger" onclick="removeAdminUser('${admin.uid}')" title="Remove Admin">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : '<span class="protected-badge">Protected</span>'}
+                    </td>
+                </tr>
+            `;
+        }
+        
+        tbody.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading admins:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">Error loading admins: ' + error.message + '</td></tr>';
+        showToast('Error loading admins', 'error');
+    } finally {
+        hideLoading();
     }
+}
+
+/**
+ * Load super admin dashboard data
+ */
+async function loadSuperAdminDashboard() {
+    console.log('Loading super admin dashboard...');
     
-    if (!deposit) {
+    try {
+        // Load all users
+        const usersSnapshot = await db.collection('users').get();
+        const allUsersData = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        
+        const totalUsers = allUsersData.filter(u => u.role === 'user').length;
+        const totalAdmins = allUsersData.filter(u => u.role === 'admin' || u.role === 'superadmin').length;
+        
+        // Load deposits
+        const depositsSnapshot = await db.collection('deposits')
+            .where('status', '==', 'completed')
+            .get();
+        let totalDeposits = 0;
+        depositsSnapshot.forEach(doc => {
+            totalDeposits += doc.data().amount || 0;
+        });
+        
+        // Update stats
+        const totalUsersEl = document.getElementById('superTotalUsers');
+        const totalAdminsEl = document.getElementById('totalAdmins');
+        const totalVolumeEl = document.getElementById('totalVolume');
+        const growthRateEl = document.getElementById('growthRate');
+        
+        if (totalUsersEl) totalUsersEl.textContent = totalUsers;
+        if (totalAdminsEl) totalAdminsEl.textContent = totalAdmins;
+        if (totalVolumeEl) totalVolumeEl.textContent = formatMoney(totalDeposits);
+        
+        const growthPercent = totalUsers > 0 ? ((totalUsers / 100) * 100).toFixed(1) : '0';
+        if (growthRateEl) growthRateEl.textContent = `+${growthPercent}%`;
+        
+    } catch (error) {
+        console.error('Error loading super admin dashboard:', error);
+    }
+}
+
+async function approveDeposit(depositId) {
+    console.log('Approving deposit:', depositId);
+    
+    // Get deposit
+    const depositDoc = await db.collection('deposits').doc(depositId).get();
+    if (!depositDoc.exists) {
         showToast('Deposit not found', 'error');
         return;
+    }
+    
+    const deposit = depositDoc.data();
+    
+    if (deposit.status !== 'pending') {
+        showToast('Deposit already processed', 'warning');
+        return;
+    }
+    
+    // Get user details
+    const userDoc = await db.collection('users').doc(deposit.userId).get();
+    const userData = userDoc.exists ? userDoc.data() : null;
+    const userName = userData?.fullName || userData?.username || deposit.username || 'Unknown User';
+    
+    // Check if first deposit
+    const previousDeposits = await db.collection('deposits')
+        .where('userId', '==', deposit.userId)
+        .where('status', '==', 'completed')
+        .get();
+    
+    const isFirstDeposit = previousDeposits.size === 0;
+    
+    // Check for referrer
+    let hasReferrer = false;
+    let referrerName = 'None';
+    let potentialBonus = 0;
+    
+    if (isFirstDeposit && userData?.referredBy) {
+        hasReferrer = true;
+        const referrerDoc = await db.collection('users').doc(userData.referredBy).get();
+        if (referrerDoc.exists) {
+            const referrerData = referrerDoc.data();
+            referrerName = referrerData?.fullName || referrerData?.username || 'Referrer';
+        }
+        potentialBonus = deposit.amount * 0.10;
+    }
+    
+    // Create modal confirmation
+    const modalHtml = `
+        <div id="approveConfirmModal" class="modal show">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h2><i class="fas fa-check-circle" style="color: #4CAF50;"></i> Confirm Approval</h2>
+                    <span class="close" onclick="closeApproveConfirmModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="deposit-summary">
+                        <div class="summary-row">
+                            <span class="label">User:</span>
+                            <span class="value"><strong>${escapeHtml(userName)}</strong> (@${escapeHtml(userData?.username || deposit.username || 'N/A')})</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Amount:</span>
+                            <span class="value amount">${formatMoney(deposit.amount)}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Method:</span>
+                            <span class="value">${deposit.method || 'N/A'}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Date:</span>
+                            <span class="value">${new Date(deposit.createdAt || deposit.date).toLocaleString()}</span>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="summary-row">
+                            <span class="label">First Deposit:</span>
+                            <span class="value ${isFirstDeposit ? 'yes' : 'no'}">
+                                ${isFirstDeposit ? '✅ Yes' : '❌ No'}
+                            </span>
+                        </div>
+                        ${isFirstDeposit ? `
+                        <div class="summary-row">
+                            <span class="label">Has Referrer:</span>
+                            <span class="value ${hasReferrer ? 'yes' : 'no'}">
+                                ${hasReferrer ? '✅ Yes' : '❌ No'}
+                            </span>
+                        </div>
+                        ${hasReferrer ? `
+                        <div class="summary-row">
+                            <span class="label">Referrer:</span>
+                            <span class="value">${escapeHtml(referrerName)}</span>
+                        </div>
+                        <div class="summary-row bonus">
+                            <span class="label">Bonus (10%):</span>
+                            <span class="value bonus-amount">+${formatMoney(potentialBonus)}</span>
+                        </div>
+                        ` : `
+                        <div class="warning-message">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No referrer found - bonus will not be given
+                        </div>
+                        `}
+                        ` : `
+                        <div class="info-message">
+                            <i class="fas fa-info-circle"></i>
+                            Not first deposit - no bonus will be given
+                        </div>
+                        `}
+                    </div>
+                    <div class="warning-box">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Warning:</strong> This action cannot be undone!
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button onclick="closeApproveConfirmModal()" class="btn-cancel">Cancel</button>
+                    <button onclick="executeApproveDeposit('${depositId}')" class="btn-approve">
+                        <i class="fas fa-check"></i> Approve Deposit
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('approveConfirmModal');
+    if (existingModal) existingModal.remove();
+    
+    // Add modal to DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Store deposit data for execution
+    window.pendingApproval = {
+        depositId: depositId,
+        deposit: deposit,
+        isFirstDeposit: isFirstDeposit,
+        userData: userData
+    };
+}
+
+/**
+ * Close approval confirmation modal
+ */
+function closeApproveConfirmModal() {
+    const modal = document.getElementById('approveConfirmModal');
+    if (modal) modal.remove();
+    window.pendingApproval = null;
+}
+
+/**
+ * Execute deposit approval after confirmation
+ */
+async function executeApproveDeposit(depositId) {
+    // Close modal first
+    closeApproveConfirmModal();
+    
+    // Get the deposit data from stored variable or fresh fetch
+    let deposit = window.pendingApproval?.deposit;
+    let isFirstDeposit = window.pendingApproval?.isFirstDeposit;
+    
+    if (!deposit) {
+        // Fetch fresh data if not available
+        const depositDoc = await db.collection('deposits').doc(depositId).get();
+        if (!depositDoc.exists) {
+            showToast('Deposit not found', 'error');
+            return;
+        }
+        deposit = depositDoc.data();
+        
+        // Re-check if first deposit
+        const previousDeposits = await db.collection('deposits')
+            .where('userId', '==', deposit.userId)
+            .where('status', '==', 'completed')
+            .get();
+        isFirstDeposit = previousDeposits.size === 0;
     }
     
     if (deposit.status !== 'pending') {
@@ -24563,578 +24751,858 @@ async function approveDepositWithBonus(depositId) {
         return;
     }
     
-    if (!confirm(`Approve deposit of ${formatMoney(deposit.amount)} for ${deposit.username}?\n\nThis will also check for first deposit bonus (10% to referrer).`)) {
-        return;
-    }
-    
     showLoading('Processing deposit approval...');
     
     try {
-        // STEP 1: Check if this is user's first deposit
-        const previousDeposits = await db.collection('deposits')
-            .where('userId', '==', deposit.userId)
-            .where('status', '==', 'completed')
-            .get();
-        
-        const isFirstDeposit = previousDeposits.size === 0;
-        console.log(`Is first deposit: ${isFirstDeposit}`);
-        console.log(`Previous deposits count: ${previousDeposits.size}`);
-        
-        // STEP 2: Update deposit status
+        // Update deposit status
         await db.collection('deposits').doc(depositId).update({
             status: 'completed',
             approvedAt: new Date().toISOString(),
             approvedBy: currentUser?.uid || 'admin',
-            isFirstDeposit: isFirstDeposit,
-            updatedAt: new Date().toISOString()
+            isFirstDeposit: isFirstDeposit
         });
         
-        // STEP 3: Update user's balance
-        const userRef = db.collection('users').doc(deposit.userId);
-        
-        await userRef.update({
+        // Update user balance
+        await db.collection('users').doc(deposit.userId).update({
             balance: firebase.firestore.FieldValue.increment(deposit.amount),
             totalEarned: firebase.firestore.FieldValue.increment(deposit.amount),
             history: firebase.firestore.FieldValue.arrayUnion({
                 id: generateId(),
                 type: 'deposit',
-                description: `Deposit approved - ${deposit.method} - Ref: ${deposit.transactionReference || deposit.transactionCode || 'N/A'}`,
+                description: `Deposit approved: ${formatMoney(deposit.amount)}`,
                 amount: deposit.amount,
                 status: 'completed',
-                date: new Date().toISOString(),
-                metadata: {
-                    depositId: depositId,
-                    approvedBy: currentUser?.username || 'Admin',
-                    isFirstDeposit: isFirstDeposit
-                }
+                date: new Date().toISOString()
             })
         });
         
-        // STEP 4: Send notification to user
-        await addNotification(
-            deposit.userId,
-            '✅ Deposit Approved',
-            `Your deposit of ${formatMoney(deposit.amount)} via ${deposit.method} has been approved and added to your balance.`,
-            'success'
-        );
-        
-        // STEP 5: PROCESS FIRST DEPOSIT BONUS
+        // Process bonus if first deposit
         let bonusResult = null;
         if (isFirstDeposit) {
-            console.log('🎯 FIRST DEPOSIT DETECTED! Processing referral bonus...');
-            bonusResult = await giveFirstDepositBonus(deposit.userId, deposit.amount);
+            console.log("🎯 First deposit detected! Processing bonus...");
+            bonusResult = await processReferralFirstDepositBonus(deposit.userId, deposit.amount);
             
             if (bonusResult && bonusResult.success) {
-                // Update deposit record with bonus info
+                console.log("✅ Bonus processed successfully:", bonusResult);
                 await db.collection('deposits').doc(depositId).update({
                     firstDepositBonusGiven: true,
                     firstDepositBonusAmount: bonusResult.bonusAmount,
-                    firstDepositBonusPaidTo: bonusResult.referrerId,
-                    firstDepositBonusPaidAt: new Date().toISOString()
+                    firstDepositBonusPaidTo: bonusResult.referrerId
                 });
-                console.log('✅ Deposit record updated with bonus info');
             } else {
-                console.log('⚠️ First deposit bonus not processed:', bonusResult?.message);
+                console.log("❌ Bonus failed:", bonusResult?.message);
             }
-        } else {
-            console.log('ℹ️ Not first deposit, skipping bonus');
         }
         
         hideLoading();
         
-        // Show success message
-        let successMessage = `✅ Deposit of ${formatMoney(deposit.amount)} approved successfully`;
+        // Show result
+        let message = `✅ Deposit of ${formatMoney(deposit.amount)} approved`;
         if (bonusResult && bonusResult.success) {
-            successMessage += `\n🎁 Referrer earned ${formatMoney(bonusResult.bonusAmount)} first deposit bonus!`;
+            message += `\n🎁 Referrer earned ${formatMoney(bonusResult.bonusAmount)}!`;
+        } else if (isFirstDeposit) {
+            message += `\n⚠️ No referrer found - bonus not given`;
         }
-        showToast(successMessage, 'success');
+        showToast(message, 'success');
         
-        // Reload data
+        // Refresh data
         await loadAdminData();
         await loadDeposits();
         
-        // If the current user made the deposit, refresh their data
-        if (currentUser && currentUser.uid === deposit.userId) {
-            await loadUserData();
-        }
-        
-        console.log('=========================================');
-        console.log('✅ DEPOSIT APPROVAL COMPLETED');
-        console.log('=========================================');
-        
     } catch (error) {
         hideLoading();
-        console.error('❌ Error approving deposit:', error);
+        console.error('Error approving deposit:', error);
         showToast('Error approving deposit: ' + error.message, 'error');
+    }
+    
+    window.pendingApproval = null;
+}
+
+// Add CSS for the confirmation modal
+const confirmModalStyles = `
+    #approveConfirmModal .deposit-summary {
+        margin-bottom: 20px;
+    }
+    
+    #approveConfirmModal .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+    }
+    
+    #approveConfirmModal .summary-row .label {
+        font-weight: 500;
+        color: #666;
+    }
+    
+    #approveConfirmModal .summary-row .value {
+        font-weight: 500;
+    }
+    
+    #approveConfirmModal .summary-row .value.amount {
+        color: #4CAF50;
+        font-size: 18px;
+        font-weight: bold;
+    }
+    
+    #approveConfirmModal .summary-row .value.yes {
+        color: #4CAF50;
+    }
+    
+    #approveConfirmModal .summary-row .value.no {
+        color: #f44336;
+    }
+    
+    #approveConfirmModal .summary-row.bonus {
+        background: #e8f5e9;
+        margin-top: 5px;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    
+    #approveConfirmModal .bonus-amount {
+        color: #4CAF50;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    
+    #approveConfirmModal .divider {
+        height: 1px;
+        background: #ddd;
+        margin: 10px 0;
+    }
+    
+    #approveConfirmModal .warning-message,
+    #approveConfirmModal .info-message {
+        padding: 10px;
+        border-radius: 8px;
+        margin: 10px 0;
+        font-size: 13px;
+    }
+    
+    #approveConfirmModal .warning-message {
+        background: #fff3e0;
+        color: #e65100;
+    }
+    
+    #approveConfirmModal .info-message {
+        background: #e3f2fd;
+        color: #1565c0;
+    }
+    
+    #approveConfirmModal .warning-box {
+        background: #ffebee;
+        color: #c62828;
+        padding: 12px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    
+    #approveConfirmModal .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    
+    #approveConfirmModal .btn-cancel {
+        background: #f5f5f5;
+        color: #666;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    #approveConfirmModal .btn-approve {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    #approveConfirmModal .btn-approve:hover {
+        background: #45a049;
+    }
+`;
+
+// Add styles if not already added
+if (!document.querySelector('#confirm-modal-styles')) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'confirm-modal-styles';
+    styleSheet.textContent = confirmModalStyles;
+    document.head.appendChild(styleSheet);
+}
+
+// Make functions available globally
+window.closeApproveConfirmModal = closeApproveConfirmModal;
+window.executeApproveDeposit = executeApproveDeposit;
+
+/**
+ * Process first deposit bonus - FIXED VERSION
+ * Checks multiple possible field names for referrer
+ */
+async function processReferralFirstDepositBonus(userId, depositAmount) {
+    console.log(`Processing first deposit bonus for user: ${userId}`);
+    
+    try {
+        // Get user data
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            return { success: false, message: 'User not found' };
+        }
+        
+        const userData = userDoc.data();
+        
+        // CHECK MULTIPLE POSSIBLE REFERRER FIELD NAMES
+        let referrerId = null;
+        
+        // Try all possible field names that might contain the referrer
+        if (userData.referredBy) {
+            referrerId = userData.referredBy;
+            console.log("Found referrer in 'referredBy' field:", referrerId);
+        } else if (userData.referrerId) {
+            referrerId = userData.referrerId;
+            console.log("Found referrer in 'referrerId' field:", referrerId);
+        } else if (userData.referrer) {
+            referrerId = userData.referrer;
+            console.log("Found referrer in 'referrer' field:", referrerId);
+        } else if (userData.referred_by) {
+            referrerId = userData.referred_by;
+            console.log("Found referrer in 'referred_by' field:", referrerId);
+        }
+        
+        // If no referrer found, check if they were added to someone's referrals array
+        if (!referrerId) {
+            console.log("No direct referrer field found, searching in referrals collections...");
+            
+            // Search for this user in any referrer's referrals array
+            const usersSnapshot = await db.collection('users').get();
+            for (const doc of usersSnapshot.docs) {
+                const data = doc.data();
+                if (data.referrals && Array.isArray(data.referrals)) {
+                    const found = data.referrals.find(ref => ref.userId === userId || ref.username === userData.username);
+                    if (found) {
+                        referrerId = doc.id;
+                        console.log("Found referrer in referrals array:", referrerId);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!referrerId) {
+            console.log('No referrer found for user');
+            return { success: false, message: 'No referrer found' };
+        }
+        
+        // Check if bonus already given
+        if (userData.firstDepositBonusGiven === true) {
+            console.log('Bonus already given to this user');
+            return { success: false, message: 'Bonus already given' };
+        }
+        
+        // Calculate 10% bonus
+        const bonusAmount = depositAmount * 0.10;
+        
+        if (bonusAmount <= 0) {
+            return { success: false, message: 'Invalid bonus amount' };
+        }
+        
+        console.log(`💰 Calculated bonus: ${formatMoney(bonusAmount)} (10% of ${formatMoney(depositAmount)})`);
+        
+        // Get referrer data
+        const referrerRef = db.collection('users').doc(referrerId);
+        const referrerDoc = await referrerRef.get();
+        
+        if (!referrerDoc.exists) {
+            return { success: false, message: 'Referrer not found' };
+        }
+        
+        const referrerData = referrerDoc.data();
+        
+        // Start batch write
+        const batch = db.batch();
+        
+        // Add bonus to referrer
+        batch.update(referrerRef, {
+            referralBalance: firebase.firestore.FieldValue.increment(bonusAmount),
+            totalEarned: firebase.firestore.FieldValue.increment(bonusAmount),
+            'referralEarnings.level1': firebase.firestore.FieldValue.increment(bonusAmount),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'first_deposit_bonus',
+                description: `🎁 First Deposit Bonus (10%) from ${userData.username}`,
+                amount: bonusAmount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    userId: userId,
+                    username: userData.username,
+                    depositAmount: depositAmount,
+                    bonusPercentage: 10
+                }
+            }),
+            notifications: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                title: '💰 First Deposit Bonus!',
+                message: `${userData.username} made their first deposit of ${formatMoney(depositAmount)}! You earned ${formatMoney(bonusAmount)}!`,
+                type: 'success',
+                read: false,
+                date: new Date().toISOString()
+            })
+        });
+        
+        // Mark bonus as given on user's record
+        batch.update(db.collection('users').doc(userId), {
+            firstDepositBonusGiven: true,
+            firstDepositBonusAmount: bonusAmount,
+            firstDepositBonusPaidTo: referrerId,
+            firstDepositBonusPaidAt: new Date().toISOString()
+        });
+        
+        await batch.commit();
+        
+        console.log(`✅ Bonus added: ${formatMoney(bonusAmount)} to ${referrerData.username}`);
+        
+        // Update local referrer data if logged in
+        if (currentUser && currentUser.uid === referrerId) {
+            currentUser.referralBalance = (currentUser.referralBalance || 0) + bonusAmount;
+            currentUser.totalEarned = (currentUser.totalEarned || 0) + bonusAmount;
+            showToast(`🎉 You earned ${formatMoney(bonusAmount)} from your referral's first deposit!`, 'success');
+        }
+        
+        return {
+            success: true,
+            bonusAmount: bonusAmount,
+            referrerId: referrerId,
+            referrerUsername: referrerData.username,
+            message: `Added ${formatMoney(bonusAmount)} to referrer`
+        };
+        
+    } catch (error) {
+        console.error('Error processing bonus:', error);
+        return { success: false, message: error.message };
     }
 }
 
 /**
- * CHECK AND FIX ALL MISSED FIRST DEPOSIT BONUSES
- * Run this to find and fix any bonuses that were never given
+ * Get total first deposit bonuses earned by a referrer
+ * Uses composite index on users collection
+ * @param {string} referrerId - The referrer's user ID
+ * @returns {Promise<object>} - Total bonus amount and details
  */
-async function fixMissedFirstDepositBonuses() {
-    console.log('=========================================');
-    console.log('🔍 FIX MISSED FIRST DEPOSIT BONUSES');
-    console.log('=========================================');
-    
-    showLoading('Checking for missed first deposit bonuses...');
-    
-    const stats = {
-        totalUsersChecked: 0,
-        usersWithDeposits: 0,
-        usersWithReferrer: 0,
-        bonusesFixed: 0,
-        errors: 0,
-        totalBonusAmount: 0
-    };
-    
-    const fixedUsers = [];
-    const errorUsers = [];
+async function getReferrerTotalBonuses(referrerId) {
+    console.log(`Getting total bonuses for referrer: ${referrerId}`);
     
     try {
-        // STEP 1: Get all completed deposits
-        const depositsSnapshot = await db.collection('deposits')
-            .where('status', '==', 'completed')
+        // ============================================
+        // INDEXED QUERY: Find all users referred by this referrer who gave bonus
+        // Uses composite index: referredBy + firstDepositBonusGiven
+        // ============================================
+        const referredUsers = await db.collection('users')
+            .where('referredBy', '==', referrerId)
+            .where('firstDepositBonusGiven', '==', true)
             .get();
         
-        console.log(`Total completed deposits: ${depositsSnapshot.size}`);
+        let totalBonusAmount = 0;
+        const bonusDetails = [];
         
-        // Group deposits by user
-        const userDeposits = new Map();
-        
-        depositsSnapshot.forEach(doc => {
-            const deposit = doc.data();
-            if (!userDeposits.has(deposit.userId)) {
-                userDeposits.set(deposit.userId, []);
-            }
-            userDeposits.get(deposit.userId).push({
-                id: doc.id,
-                amount: deposit.amount,
-                createdAt: deposit.createdAt || deposit.date,
-                isFirstDeposit: deposit.isFirstDeposit
+        referredUsers.forEach(doc => {
+            const userData = doc.data();
+            const bonusAmount = userData.firstDepositBonusAmount || 0;
+            totalBonusAmount += bonusAmount;
+            
+            bonusDetails.push({
+                userId: doc.id,
+                username: userData.username,
+                depositAmount: userData.firstDepositBonusAmount ?
+                    (userData.firstDepositBonusAmount / 0.10) : 0,
+                bonusAmount: bonusAmount,
+                bonusPaidAt: userData.firstDepositBonusPaidAt,
+                joinedAt: userData.createdAt
             });
         });
         
-        stats.usersWithDeposits = userDeposits.size;
-        console.log(`Users with deposits: ${stats.usersWithDeposits}`);
+        console.log(`Total bonuses for referrer: ${formatMoney(totalBonusAmount)} from ${referredUsers.size} referrals`);
         
-        // STEP 2: Process each user
-        for (const [userId, deposits] of userDeposits) {
-            stats.totalUsersChecked++;
-            console.log(`\n--- Checking user: ${userId} ---`);
+        return {
+            success: true,
+            totalBonusAmount: totalBonusAmount,
+            totalReferrals: referredUsers.size,
+            bonusDetails: bonusDetails
+        };
+        
+    } catch (error) {
+        console.error('Error getting referrer bonuses:', error);
+        return {
+            success: false,
+            totalBonusAmount: 0,
+            totalReferrals: 0,
+            bonusDetails: [],
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Get all users who have made a deposit but bonus not yet paid
+ * Uses composite index on deposits collection
+ * @returns {Promise<Array>} - List of unpaid first deposits
+ */
+async function getUnpaidFirstDeposits() {
+    console.log('Getting unpaid first deposits...');
+    
+    try {
+        // ============================================
+        // INDEXED QUERY: Get all completed deposits that are first deposits
+        // Uses composite index: status + isFirstDeposit
+        // ============================================
+        const firstDeposits = await db.collection('deposits')
+            .where('status', '==', 'completed')
+            .where('isFirstDeposit', '==', true)
+            .get();
+        
+        const unpaidDeposits = [];
+        
+        for (const doc of firstDeposits.docs) {
+            const deposit = { id: doc.id, ...doc.data() };
             
-            // Get user data
-            const userDoc = await db.collection('users').doc(userId).get();
-            if (!userDoc.exists) {
-                console.log(`User document not found`);
-                stats.errors++;
-                errorUsers.push({ userId, error: 'User document not found' });
+            // Check if bonus was already given
+            if (!deposit.firstDepositBonusGiven) {
+                // Get user data
+                const userDoc = await db.collection('users').doc(deposit.userId).get();
+                const userData = userDoc.data();
+                
+                unpaidDeposits.push({
+                    depositId: deposit.id,
+                    userId: deposit.userId,
+                    username: deposit.username || userData?.username,
+                    amount: deposit.amount,
+                    depositDate: deposit.approvedAt || deposit.createdAt,
+                    hasReferrer: !!(userData?.referredBy),
+                    referrerId: userData?.referredBy || null
+                });
+            }
+        }
+        
+        console.log(`Found ${unpaidDeposits.length} unpaid first deposits`);
+        
+        return unpaidDeposits;
+        
+    } catch (error) {
+        console.error('Error getting unpaid first deposits:', error);
+        return [];
+    }
+}
+
+/**
+ * Process all unpaid first deposit bonuses (Admin function)
+ * @returns {Promise<object>} - Results of processing
+ */
+async function processAllUnpaidBonuses() {
+    console.log('Processing all unpaid first deposit bonuses...');
+    
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'superadmin')) {
+        showToast('Access denied. Admin only.', 'error');
+        return { success: false, message: 'Access denied' };
+    }
+    
+    showLoading('Processing unpaid bonuses...');
+    
+    try {
+        const unpaidDeposits = await getUnpaidFirstDeposits();
+        
+        if (unpaidDeposits.length === 0) {
+            hideLoading();
+            showToast('No unpaid bonuses found!', 'success');
+            return { success: true, processed: 0, message: 'No unpaid bonuses' };
+        }
+        
+        let processed = 0;
+        let failed = 0;
+        const results = [];
+        
+        for (const deposit of unpaidDeposits) {
+            if (!deposit.hasReferrer) {
+                console.log(`Skipping ${deposit.username} - no referrer`);
                 continue;
             }
             
-            const userData = userDoc.data();
-            console.log(`Username: ${userData.username}`);
-            console.log(`Has referrer: ${userData.referredBy ? 'YES' : 'NO'}`);
-            console.log(`Bonus already given: ${userData.firstDepositBonusGiven === true ? 'YES' : 'NO'}`);
+            console.log(`Processing bonus for ${deposit.username} - ${formatMoney(deposit.amount)}`);
             
-            // Skip if no referrer
-            if (!userData.referredBy) {
-                console.log(`Skipping - No referrer`);
-                continue;
-            }
-            
-            stats.usersWithReferrer++;
-            
-            // Skip if bonus already given
-            if (userData.firstDepositBonusGiven === true) {
-                console.log(`Skipping - Bonus already given`);
-                continue;
-            }
-            
-            // Sort deposits to get first deposit
-            deposits.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-            const firstDeposit = deposits[0];
-            
-            console.log(`First deposit amount: ${formatMoney(firstDeposit.amount)}`);
-            console.log(`First deposit date: ${new Date(firstDeposit.createdAt).toLocaleString()}`);
-            
-            // Process the missed bonus
-            console.log(`Processing missed bonus...`);
-            const result = await giveFirstDepositBonus(userId, firstDeposit.amount);
+            const result = await processReferralFirstDepositBonus(deposit.userId, deposit.amount);
             
             if (result.success) {
-                stats.bonusesFixed++;
-                stats.totalBonusAmount += result.bonusAmount;
-                fixedUsers.push({
-                    username: userData.username,
-                    userId: userId,
-                    depositAmount: firstDeposit.amount,
-                    bonusAmount: result.bonusAmount,
-                    referrerName: result.referrerName,
-                    referrerId: result.referrerId
-                });
-                console.log(`✅ BONUS FIXED: ${formatMoney(result.bonusAmount)} to ${result.referrerName}`);
+                processed++;
+                results.push(result);
             } else {
-                stats.errors++;
-                errorUsers.push({
-                    username: userData.username,
-                    userId: userId,
-                    depositAmount: firstDeposit.amount,
-                    error: result.message
-                });
-                console.log(`❌ FAILED: ${result.message}`);
+                failed++;
+                console.error(`Failed to process bonus for ${deposit.username}:`, result.message);
             }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
         
         hideLoading();
         
-        // STEP 3: Show summary
-        showMissedBonusSummary(stats, fixedUsers, errorUsers);
+        const message = `✅ Processed ${processed} bonuses, Failed: ${failed}`;
+        showToast(message, processed > 0 ? 'success' : 'warning');
         
-        // STEP 4: Log audit
-        await logAudit('missed_bonus_check', 
-            `Checked ${stats.totalUsersChecked} users. Fixed ${stats.bonusesFixed} missed bonuses. Total bonus: ${formatMoney(stats.totalBonusAmount)}`, 
-            currentUser?.uid);
+        // Refresh admin data
+        await loadAdminData();
+        await loadDeposits();
         
-        console.log('\n📊 FINAL SUMMARY:');
-        console.log(`   Total users checked: ${stats.totalUsersChecked}`);
-        console.log(`   Users with deposits: ${stats.usersWithDeposits}`);
-        console.log(`   Users with referrers: ${stats.usersWithReferrer}`);
-        console.log(`   ✅ Bonuses fixed: ${stats.bonusesFixed}`);
-        console.log(`   ❌ Errors: ${stats.errors}`);
-        console.log(`   💰 Total bonus distributed: ${formatMoney(stats.totalBonusAmount)}`);
-        console.log('=========================================');
+        return {
+            success: true,
+            processed: processed,
+            failed: failed,
+            results: results,
+            message: message
+        };
         
-        showToast(`✅ Fixed ${stats.bonusesFixed} missed first deposit bonuses! Total: ${formatMoney(stats.totalBonusAmount)}`, 'success');
+    } catch (error) {
+        hideLoading();
+        console.error('Error processing unpaid bonuses:', error);
+        showToast('Error processing bonuses: ' + error.message, 'error');
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Get bonus statistics for admin dashboard
+ * Uses multiple indexed queries
+ * @returns {Promise<object>} - Bonus statistics
+ */
+async function getBonusStatistics() {
+    console.log('Getting bonus statistics...');
+    
+    try {
+        // ============================================
+        // INDEXED QUERY 1: Get all users who received bonus
+        // Uses composite index: firstDepositBonusGiven + createdAt
+        // ============================================
+        const usersWithBonus = await db.collection('users')
+            .where('firstDepositBonusGiven', '==', true)
+            .get();
+        
+        // ============================================
+        // INDEXED QUERY 2: Get all completed first deposits
+        // Uses composite index: status + isFirstDeposit
+        // ============================================
+        const firstDeposits = await db.collection('deposits')
+            .where('status', '==', 'completed')
+            .where('isFirstDeposit', '==', true)
+            .get();
+        
+        // ============================================
+        // INDEXED QUERY 3: Get total bonus amount paid
+        // Uses composite index: type + status (for history)
+        // ============================================
+        let totalBonusPaid = 0;
+        let totalReferrers = new Set();
+        
+        usersWithBonus.forEach(doc => {
+            const userData = doc.data();
+            totalBonusPaid += userData.firstDepositBonusAmount || 0;
+            if (userData.firstDepositBonusPaidTo) {
+                totalReferrers.add(userData.firstDepositBonusPaidTo);
+            }
+        });
+        
+        const stats = {
+            totalFirstDeposits: firstDeposits.size,
+            totalBonusesPaid: usersWithBonus.size,
+            totalBonusAmount: totalBonusPaid,
+            totalReferrersEarned: totalReferrers.size,
+            averageBonusAmount: usersWithBonus.size > 0 ?
+                totalBonusPaid / usersWithBonus.size : 0,
+            pendingBonuses: firstDeposits.size - usersWithBonus.size
+        };
+        
+        console.log('Bonus statistics:', stats);
         
         return stats;
         
     } catch (error) {
-        hideLoading();
-        console.error('❌ Error in fixMissedFirstDepositBonuses:', error);
-        showToast('Error checking missed bonuses: ' + error.message, 'error');
+        console.error('Error getting bonus statistics:', error);
         return null;
     }
 }
 
-/**
- * Show summary of missed bonus check results
- */
-function showMissedBonusSummary(stats, fixedUsers, errorUsers) {
-    let modal = document.getElementById('missedBonusSummaryModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'missedBonusSummaryModal';
-        modal.className = 'modal';
-        modal.innerHTML = `
-            <div class="modal-content large">
-                <span class="close" onclick="closeMissedBonusSummaryModal()">&times;</span>
-                <h2><i class="fas fa-gift"></i> First Deposit Bonus - Fix Results</h2>
-                <div id="missedBonusSummaryContent"></div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    }
+async function testBonusSystem() {
+    console.log("=== TESTING BONUS SYSTEM ===");
     
-    let html = `
-        <div class="missed-bonus-summary">
-            <div class="summary-stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Users Checked</span>
-                        <span class="stat-number">${stats.totalUsersChecked}</span>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">💰</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Users with Deposits</span>
-                        <span class="stat-number">${stats.usersWithDeposits}</span>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">🔗</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Had Referrers</span>
-                        <span class="stat-number">${stats.usersWithReferrer}</span>
-                    </div>
-                </div>
-                <div class="stat-card success">
-                    <div class="stat-icon">✅</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Bonuses Fixed</span>
-                        <span class="stat-number">${stats.bonusesFixed}</span>
-                    </div>
-                </div>
-                <div class="stat-card error">
-                    <div class="stat-icon">❌</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Errors</span>
-                        <span class="stat-number">${stats.errors}</span>
-                    </div>
-                </div>
-                <div class="stat-card total">
-                    <div class="stat-icon">💎</div>
-                    <div class="stat-info">
-                        <span class="stat-label">Total Bonus</span>
-                        <span class="stat-number">${formatMoney(stats.totalBonusAmount)}</span>
-                    </div>
-                </div>
-            </div>
-    `;
+    // Create a test deposit
+    const testDeposit = {
+        userId: "test_user_with_referrer",
+        username: "testuser",
+        amount: 50000,
+        status: "pending",
+        method: "M-Pesa"
+    };
     
-    if (fixedUsers.length > 0) {
-        html += `
-            <div class="results-section success">
-                <h3><i class="fas fa-check-circle"></i> Successfully Fixed (${fixedUsers.length})</h3>
-                <div class="results-list">
-                    ${fixedUsers.map(u => `
-                        <div class="result-item success">
-                            <div class="result-user">
-                                <i class="fas fa-user"></i>
-                                <strong>${escapeHtml(u.username)}</strong>
-                            </div>
-                            <div class="result-details">
-                                <span>Deposit: ${formatMoney(u.depositAmount)}</span>
-                                <span>→ Bonus: ${formatMoney(u.bonusAmount)}</span>
-                                <span>→ Referrer: ${escapeHtml(u.referrerName)}</span>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-    }
+    // Add test deposit to Firestore
+    const depositRef = await db.collection('deposits').add(testDeposit);
+    console.log("Test deposit created:", depositRef.id);
     
-    if (errorUsers.length > 0) {
-        html += `
-            <div class="results-section error">
-                <h3><i class="fas fa-exclamation-triangle"></i> Errors (${errorUsers.length})</h3>
-                <div class="results-list">
-                    ${errorUsers.map(u => `
-                        <div class="result-item error">
-                            <div class="result-user">
-                                <i class="fas fa-user"></i>
-                                <strong>${escapeHtml(u.username)}</strong>
-                            </div>
-                            <div class="result-details">
-                                <span>Deposit: ${formatMoney(u.depositAmount)}</span>
-                                <span class="error-msg">❌ ${escapeHtml(u.error)}</span>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-    }
+    // Approve it
+    await approveDeposit(depositRef.id);
     
-    html += `
-            <div class="modal-actions">
-                <button onclick="closeMissedBonusSummaryModal()" class="auth-btn">Close</button>
-                <button onclick="exportMissedBonusReport()" class="auth-btn success">
-                    <i class="fas fa-download"></i> Export Report
-                </button>
-            </div>
-        </div>
-    `;
+    // Check if bonus was given
+    const referrerDoc = await db.collection('users').doc("referrer_123").get();
+    console.log("Referrer balance after bonus:", referrerDoc.data().referralBalance);
+    // Expected: 5000 TZS (10% of 50000)
     
-    document.getElementById('missedBonusSummaryContent').innerHTML = html;
-    modal.classList.add('show');
-    document.body.style.overflow = 'hidden';
-    
-    // Store data for export
-    window.lastMissedBonusData = { stats, fixedUsers, errorUsers };
+    // Clean up
+    await db.collection('deposits').doc(depositRef.id).delete();
 }
 
 /**
- * Close missed bonus summary modal
+ * DEBUG: Check why bonus is not being given
  */
-function closeMissedBonusSummaryModal() {
-    const modal = document.getElementById('missedBonusSummaryModal');
-    if (modal) {
-        modal.classList.remove('show');
-        document.body.style.overflow = '';
-    }
-}
-
-/**
- * Export missed bonus report to CSV
- */
-function exportMissedBonusReport() {
-    if (!window.lastMissedBonusData) return;
+async function debugBonusIssue(depositId) {
+    console.log("=== DEBUGGING BONUS ISSUE ===");
     
-    const { stats, fixedUsers, errorUsers } = window.lastMissedBonusData;
-    
-    let csvContent = 'Report Type,Username,User ID,Deposit Amount,Bonus Amount,Referrer Name,Referrer ID,Status,Error\n';
-    
-    // Add fixed users
-    fixedUsers.forEach(u => {
-        csvContent += `Fixed,${u.username},${u.userId},${u.depositAmount},${u.bonusAmount},${u.referrerName},${u.referrerId},Success,\n`;
-    });
-    
-    // Add error users
-    errorUsers.forEach(u => {
-        csvContent += `Error,${u.username},${u.userId},${u.depositAmount},0,,,Failed,${u.error}\n`;
-    });
-    
-    // Add summary row
-    csvContent += `\nSUMMARY,,,,,,,,\n`;
-    csvContent += `Total Users Checked,${stats.totalUsersChecked},,,,,\n`;
-    csvContent += `Users with Deposits,${stats.usersWithDeposits},,,,,\n`;
-    csvContent += `Had Referrers,${stats.usersWithReferrer},,,,,\n`;
-    csvContent += `Bonuses Fixed,${stats.bonusesFixed},,,,,\n`;
-    csvContent += `Errors,${stats.errors},,,,,\n`;
-    csvContent += `Total Bonus Distributed,${stats.totalBonusAmount},,,,,\n`;
-    
-    // Download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.setAttribute('download', `first_deposit_bonus_report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showToast('Report exported successfully!', 'success');
-}
-
-/**
- * Add admin button for first deposit bonus system
- */
-function addFirstDepositBonusAdminButton() {
-    setTimeout(() => {
-        const adminDashboard = document.getElementById('adminDashboardTab');
-        if (!adminDashboard) return;
-        
-        if (document.getElementById('firstDepositBonusAdminBtn')) return;
-        
-        const buttonDiv = document.createElement('div');
-        buttonDiv.style.cssText = `
-            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        `;
-        
-        buttonDiv.innerHTML = `
-            <div>
-                <h3 style="color: white; margin: 0 0 5px 0;">
-                    <i class="fas fa-gift"></i> First Deposit Bonus System
-                </h3>
-                <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 13px;">
-                    Referrers automatically get 10% bonus when their referrals make first deposit
-                </p>
-            </div>
-            <button id="firstDepositBonusAdminBtn" style="background: white; color: #2E7D32; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px;">
-                <i class="fas fa-search"></i> Check & Fix Missed Bonuses
-            </button>
-        `;
-        
-        const btn = buttonDiv.querySelector('#firstDepositBonusAdminBtn');
-        btn.onclick = async () => {
-            if (confirm('This will check ALL users for missed first deposit bonuses and fix them. Continue?')) {
-                await fixMissedFirstDepositBonuses();
-            }
-        };
-        
-        const firstChild = adminDashboard.firstChild;
-        if (firstChild) {
-            adminDashboard.insertBefore(buttonDiv, firstChild);
-        } else {
-            adminDashboard.appendChild(buttonDiv);
+    try {
+        // 1. Get the deposit
+        const depositDoc = await db.collection('deposits').doc(depositId).get();
+        if (!depositDoc.exists) {
+            console.log("❌ Deposit not found!");
+            return;
         }
         
-    }, 1000);
-}
-
-/**
- * Get first deposit bonus status for a user
- */
-async function getFirstDepositBonusStatus(userId) {
-    try {
+        const deposit = depositDoc.data();
+        const userId = deposit.userId;
+        
+        console.log("📝 Deposit Info:");
+        console.log("  - User ID:", userId);
+        console.log("  - Amount:", deposit.amount);
+        console.log("  - Status:", deposit.status);
+        
+        // 2. Get the user who made the deposit
         const userDoc = await db.collection('users').doc(userId).get();
-        if (!userDoc.exists) return null;
+        if (!userDoc.exists) {
+            console.log("❌ User not found!");
+            return;
+        }
         
         const userData = userDoc.data();
         
-        // Get user's first deposit
-        const depositsSnapshot = await db.collection('deposits')
-            .where('userId', '==', userId)
-            .where('status', '==', 'completed')
-            .orderBy('createdAt', 'asc')
-            .limit(1)
-            .get();
+        console.log("\n👤 User Info:");
+        console.log("  - Username:", userData.username);
+        console.log("  - Email:", userData.email);
+        console.log("  - referredBy field:", userData.referredBy);
+        console.log("  - firstDepositBonusGiven:", userData.firstDepositBonusGiven);
         
-        let firstDepositAmount = null;
-        let firstDepositDate = null;
+        // 3. Check all possible referral fields
+        console.log("\n🔍 Checking ALL possible referral fields:");
+        console.log("  - referredBy:", userData.referredBy);
+        console.log("  - referrerId:", userData.referrerId);
+        console.log("  - referrer:", userData.referrer);
+        console.log("  - referred_by:", userData.referred_by);
+        console.log("  - myReferralCode:", userData.myReferralCode);
         
-        if (!depositsSnapshot.empty) {
-            const firstDeposit = depositsSnapshot.docs[0].data();
-            firstDepositAmount = firstDeposit.amount;
-            firstDepositDate = firstDeposit.createdAt || firstDeposit.date;
+        // 4. Check if user has any referrer in their referrals array
+        if (userData.referrals && userData.referrals.length > 0) {
+            console.log("\n📊 User's referrals array:", userData.referrals);
+        } else {
+            console.log("\n📊 User has no referrals array or it's empty");
         }
         
-        return {
-            hasReferrer: !!userData.referredBy,
-            referrerId: userData.referredBy || null,
-            hasMadeFirstDeposit: firstDepositAmount !== null,
-            firstDepositAmount: firstDepositAmount,
-            firstDepositDate: firstDepositDate,
-            bonusProcessed: userData.firstDepositBonusGiven || false,
-            bonusAmount: userData.firstDepositBonusAmount || 0,
-            bonusPaidTo: userData.firstDepositBonusPaidTo || null,
-            bonusPaidAt: userData.firstDepositBonusPaidAt || null
-        };
+        // 5. Check if this is first deposit
+        const previousDeposits = await db.collection('deposits')
+            .where('userId', '==', userId)
+            .where('status', '==', 'completed')
+            .get();
+        
+        console.log("\n💰 Deposit History:");
+        console.log("  - Previous completed deposits:", previousDeposits.size);
+        console.log("  - Is first deposit:", previousDeposits.size === 0);
+        
+        // 6. If user has referredBy but bonus not given, try to manually process
+        if (userData.referredBy && !userData.firstDepositBonusGiven) {
+            console.log("\n✅ User HAS a referrer! Let's try to process bonus manually...");
+            
+            const referrerDoc = await db.collection('users').doc(userData.referredBy).get();
+            if (referrerDoc.exists) {
+                const referrerData = referrerDoc.data();
+                console.log("  - Referrer username:", referrerData.username);
+                console.log("  - Referrer current balance:", referrerData.referralBalance);
+                
+                // Calculate bonus
+                const bonusAmount = deposit.amount * 0.10;
+                console.log("  - Calculated bonus:", formatMoney(bonusAmount));
+            } else {
+                console.log("  ❌ Referrer document not found for ID:", userData.referredBy);
+            }
+        } else {
+            console.log("\n❌ User has NO referrer or bonus already given");
+            if (!userData.referredBy) console.log("  - Reason: No referredBy field");
+            if (userData.firstDepositBonusGiven) console.log("  - Reason: Bonus already given");
+        }
+        
+        console.log("\n=== END DEBUG ===");
+        
     } catch (error) {
-        console.error('Error getting bonus status:', error);
-        return null;
+        console.error("Debug error:", error);
     }
 }
 
-// ============================================
-// OVERRIDE EXISTING FUNCTIONS
-// ============================================
+// Make it available globally
+window.debugBonusIssue = debugBonusIssue;
 
-// Replace the approveDeposit function
-window.approveDeposit = approveDepositWithBonus;
+/**
+ * Manually give bonus to a referrer
+ */
+async function manuallyGiveBonus(userId, depositAmount, referrerId) {
+    console.log("Manually giving bonus...");
+    
+    const bonusAmount = depositAmount * 0.10;
+    
+    const batch = db.batch();
+    
+    // Add to referrer
+    batch.update(db.collection('users').doc(referrerId), {
+        referralBalance: firebase.firestore.FieldValue.increment(bonusAmount),
+        totalEarned: firebase.firestore.FieldValue.increment(bonusAmount),
+        'referralEarnings.level1': firebase.firestore.FieldValue.increment(bonusAmount),
+        history: firebase.firestore.FieldValue.arrayUnion({
+            id: generateId(),
+            type: 'first_deposit_bonus',
+            description: `Manual First Deposit Bonus`,
+            amount: bonusAmount,
+            status: 'completed',
+            date: new Date().toISOString()
+        })
+    });
+    
+    // Mark user
+    batch.update(db.collection('users').doc(userId), {
+        firstDepositBonusGiven: true,
+        firstDepositBonusAmount: bonusAmount,
+        firstDepositBonusPaidTo: referrerId
+    });
+    
+    await batch.commit();
+    
+    showToast(`✅ Manual bonus of ${formatMoney(bonusAmount)} given!`, 'success');
+}
 
-// Make all functions globally available
-window.giveFirstDepositBonus = giveFirstDepositBonus;
-window.approveDepositWithBonus = approveDepositWithBonus;
-window.fixMissedFirstDepositBonuses = fixMissedFirstDepositBonuses;
-window.getFirstDepositBonusStatus = getFirstDepositBonusStatus;
-window.closeMissedBonusSummaryModal = closeMissedBonusSummaryModal;
-window.exportMissedBonusReport = exportMissedBonusReport;
-window.addFirstDepositBonusAdminButton = addFirstDepositBonusAdminButton;
+window.manuallyGiveBonus = manuallyGiveBonus;
 
-// Add button when admin dashboard loads
-const originalShowAdminDashboardForBonus = window.showAdminDashboard;
-window.showAdminDashboard = function() {
-    if (originalShowAdminDashboardForBonus) originalShowAdminDashboardForBonus();
-    addFirstDepositBonusAdminButton();
-};
-
-// Also add to switchAdminTab
-const originalSwitchAdminTabForBonus = window.switchAdminTab;
-window.switchAdminTab = function(tabName) {
-    if (originalSwitchAdminTabForBonus) originalSwitchAdminTabForBonus(tabName);
-    if (tabName === 'dashboard') {
-        setTimeout(() => addFirstDepositBonusAdminButton(), 500);
+/**
+ * DEBUG: Check why bonus says no referrer
+ */
+async function debugDepositBonusStatus(depositId) {
+    console.log("=== DEBUGGING DEPOSIT BONUS STATUS ===");
+    
+    try {
+        // 1. Get the deposit
+        const depositDoc = await db.collection('deposits').doc(depositId).get();
+        if (!depositDoc.exists) {
+            console.log("❌ Deposit not found!");
+            return;
+        }
+        
+        const deposit = depositDoc.data();
+        console.log("\n📝 DEPOSIT INFO:");
+        console.log("  - Deposit ID:", depositId);
+        console.log("  - User ID:", deposit.userId);
+        console.log("  - Amount:", deposit.amount);
+        console.log("  - Status:", deposit.status);
+        console.log("  - firstDepositBonusGiven:", deposit.firstDepositBonusGiven);
+        console.log("  - firstDepositBonusAmount:", deposit.firstDepositBonusAmount);
+        console.log("  - firstDepositBonusPaidTo:", deposit.firstDepositBonusPaidTo);
+        
+        // 2. Get the user
+        const userDoc = await db.collection('users').doc(deposit.userId).get();
+        if (!userDoc.exists) {
+            console.log("❌ User not found!");
+            return;
+        }
+        
+        const userData = userDoc.data();
+        console.log("\n👤 USER INFO:");
+        console.log("  - Username:", userData.username);
+        console.log("  - Email:", userData.email);
+        console.log("  - referredBy:", userData.referredBy);
+        console.log("  - referredByUsername:", userData.referredByUsername);
+        console.log("  - firstDepositBonusGiven:", userData.firstDepositBonusGiven);
+        console.log("  - firstDepositBonusAmount:", userData.firstDepositBonusAmount);
+        console.log("  - firstDepositBonusPaidTo:", userData.firstDepositBonusPaidTo);
+        
+        // 3. Get referrer if exists
+        if (userData.referredBy) {
+            const referrerDoc = await db.collection('users').doc(userData.referredBy).get();
+            if (referrerDoc.exists) {
+                const referrerData = referrerDoc.data();
+                console.log("\n👥 REFERRER INFO:");
+                console.log("  - Referrer ID:", userData.referredBy);
+                console.log("  - Referrer Username:", referrerData.username);
+                console.log("  - Referrer Balance:", referrerData.balance);
+                console.log("  - Referrer Referral Balance:", referrerData.referralBalance);
+            } else {
+                console.log("\n❌ Referrer document not found!");
+            }
+        } else {
+            console.log("\n❌ No referrer found for this user!");
+        }
+        
+        // 4. Check previous deposits
+        const previousDeposits = await db.collection('deposits')
+            .where('userId', '==', deposit.userId)
+            .where('status', '==', 'completed')
+            .get();
+        
+        console.log("\n💰 DEPOSIT HISTORY:");
+        console.log("  - Total completed deposits:", previousDeposits.size);
+        previousDeposits.forEach((doc, i) => {
+            const d = doc.data();
+            console.log(`    ${i + 1}. Amount: ${d.amount}, Date: ${d.approvedAt || d.createdAt}, Bonus Given: ${d.firstDepositBonusGiven}`);
+        });
+        
+        // 5. Determine if bonus should be given
+        const shouldGiveBonus = userData.referredBy &&
+            !userData.firstDepositBonusGiven &&
+            previousDeposits.size === 1; // Only this deposit
+        
+        console.log("\n🎯 BONUS ELIGIBILITY:");
+        console.log("  - Has referrer:", !!userData.referredBy);
+        console.log("  - Bonus not given yet:", !userData.firstDepositBonusGiven);
+        console.log("  - Is first deposit:", previousDeposits.size === 1);
+        console.log("  - SHOULD GIVE BONUS:", shouldGiveBonus);
+        
+        if (!shouldGiveBonus && userData.referredBy) {
+            if (userData.firstDepositBonusGiven) {
+                console.log("\n⚠️ BONUS ALREADY GIVEN! firstDepositBonusGiven = true");
+            }
+            if (previousDeposits.size > 1) {
+                console.log("\n⚠️ NOT FIRST DEPOSIT! User has", previousDeposits.size, "completed deposits");
+            }
+        }
+        
+        console.log("\n=== END DEBUG ===");
+        
+        return {
+            deposit,
+            userData,
+            shouldGiveBonus,
+            previousDepositsCount: previousDeposits.size
+        };
+        
+    } catch (error) {
+        console.error("Debug error:", error);
     }
-};
+}
 
-console.log('=========================================');
-console.log('✅ FIRST DEPOSIT BONUS SYSTEM LOADED');
-console.log('   - Referrers get 10% bonus on referral\'s first deposit');
-console.log('   - Auto processes when deposit is approved');
-console.log('   - Admin button to fix missed bonuses');
-console.log('=========================================');
+window.debugDepositBonusStatus = debugDepositBonusStatus;
