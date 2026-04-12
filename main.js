@@ -1112,7 +1112,6 @@ function showMaintenanceMode() {
     }
 }
 
-// Update showUserDashboard function
 async function showUserDashboard() {
     console.log('showUserDashboard');
     try {
@@ -1128,6 +1127,12 @@ async function showUserDashboard() {
         checkDailyTasksReset();
         await loadDailyTasks();
         
+        // ============================================
+        // PRE-LOAD PRODUCTS FOR QUICK ACCESS
+        // ============================================
+        await loadProducts(); // Load products in background
+        await loadUserProducts(); // Load user's products in background
+        
         // Start the midnight refresh timer
         startTaskRefreshTimer();
         
@@ -1135,7 +1140,6 @@ async function showUserDashboard() {
         setTimeout(() => {
             updateAllReferralLinks();
         }, 500);
-        
         
     } catch (e) {
         console.error('Error in showUserDashboard:', e);
@@ -1192,6 +1196,9 @@ function showSuperAdminDashboard() {
         document.getElementById('adminDashboard').classList.remove('active');
         document.getElementById('superAdminDashboard').classList.add('active');
         document.getElementById('authContainer').style.display = 'none';
+        
+        // Pre-load products for super admin
+        loadProducts();
         
         loadSuperAdminData();
         switchSuperAdminTab('dashboard');
@@ -5989,9 +5996,16 @@ function updateUITimeOfDay() {
 }
 
 // ============================================
-// TAB SWITCHING FUNCTIONS
+// UPDATED SWITCH USER TAB WITH PRODUCT LOADING
 // ============================================
-function switchUserTab(tabName) {
+
+// ============================================
+// SWITCH USER TAB WITH PRODUCT LOADING
+// ============================================
+
+async function switchUserTab(tabName) {
+    console.log('🔄 Switching to user tab:', tabName);
+    
     // 1. Update active menu item
     document.querySelectorAll('#sidebar .sidebar-menu li').forEach(li => {
         li.classList.remove('active');
@@ -6006,10 +6020,10 @@ function switchUserTab(tabName) {
         tab.classList.remove('active');
     });
     
-    // 3. Determine the correct tab ID – handle the special case for 'tasks1'
+    // 3. Determine the correct tab ID
     let targetId = tabName + 'Tab';
     if (tabName === 'tasks1') {
-        targetId = 'tasks1Tab'; // because your HTML uses id="tasks1Tab"
+        targetId = 'tasks1Tab';
     }
     
     // 4. Show the selected tab
@@ -6018,18 +6032,20 @@ function switchUserTab(tabName) {
         targetTab.classList.add('active');
     }
     
-    // 5. Update the page title (optional – make sure you have an element with id="currentPageTitle")
+    // 5. Update the page title
     const pageTitle = document.getElementById('currentPageTitle');
     if (pageTitle) {
         const titles = {
             'overview': 'Dashboard Overview',
             'packages': 'Investment Packages',
             'tasks': 'Daily Tasks',
-            'tasks1': 'Daily Tasks', // map tasks1 to the same title
+            'tasks1': 'Daily Tasks',
             'deposit': 'Make a Deposit',
             'withdraw': 'Withdraw Funds',
             'referrals': 'Referral Program',
-            'history': 'Transaction History'
+            'history': 'Transaction History',
+            'productsMarket': 'Investment Products',
+            'myProducts': 'My Active Investments'
         };
         pageTitle.textContent = titles[tabName] || 'SmartTask';
     }
@@ -6039,7 +6055,7 @@ function switchUserTab(tabName) {
         const sidebar = document.getElementById('sidebar');
         if (sidebar) sidebar.classList.remove('active');
     }
-
+    
     // 7. Load data specific to the tab
     if (tabName === 'history') {
         loadHistory();
@@ -6047,12 +6063,11 @@ function switchUserTab(tabName) {
         loadPackages();
     } else if (tabName === 'referrals') {
         loadReferralData();
-        // Refresh referral links when showing referrals tab
         setTimeout(() => {
             updateAllReferralLinks();
         }, 100);
     } else if (tabName === 'tasks' || tabName === 'tasks1') {
-        loadDailyTasks();
+        await loadDailyTasks();
     } else if (tabName === 'deposit') {
         console.log('Switching to deposit tab');
         setTimeout(() => {
@@ -6065,9 +6080,65 @@ function switchUserTab(tabName) {
         if (currentUser && typeof loadWithdrawAccounts === 'function') {
             loadWithdrawAccounts();
         }
+    } else if (tabName === 'productsMarket') {
+        // ============================================
+        // LOAD PRODUCTS MARKETPLACE
+        // ============================================
+        console.log('📦 Loading products marketplace...');
+        
+        // Show loading state
+        const container = document.getElementById('productsMarketGrid');
+        if (container) {
+            container.innerHTML = `
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <p>Loading available products...</p>
+                </div>
+            `;
+        }
+        
+        // Load products
+        await loadProducts();
+        await renderProductsMarket();
+        
+        // Initialize search and filter if needed
+        setTimeout(() => {
+            initProductFilters();
+        }, 100);
+        
+    } else if (tabName === 'myProducts') {
+        // ============================================
+        // LOAD USER'S ACTIVE PRODUCTS
+        // ============================================
+        console.log('💰 Loading user products...');
+        
+        // Show loading state
+        const container = document.getElementById('myProductsList');
+        if (container) {
+            container.innerHTML = `
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <p>Loading your investments...</p>
+                </div>
+            `;
+        }
+        
+        // Stop any existing real-time updates
+        if (typeof stopRealTimeUpdates === 'function') {
+            stopRealTimeUpdates();
+        }
+        
+        // Load and render user products
+        await loadMyProducts();
+        await renderMyProducts();
+        
+        // Start real-time earnings updates
+        if (typeof startRealTimeUpdates === 'function') {
+            startRealTimeUpdates();
+        }
     }
 }
-    
+
 // Update switchAdminTab function to include social links
 function switchAdminTab(tabName) {
     console.log('Switching to admin tab:', tabName);
@@ -6128,26 +6199,84 @@ function switchAdminTab(tabName) {
     }
 }
 
-function switchSuperAdminTab(tabName) {
+// ============================================
+// UPDATED SWITCH SUPER ADMIN TAB WITH PRODUCT LOADING
+// ============================================
+
+async function switchSuperAdminTab(tabName) {
+    console.log('Switching to super admin tab:', tabName);
+    
+    // Update active menu
     document.querySelectorAll('#superAdminSidebar .sidebar-menu li').forEach(li => {
         li.classList.remove('active');
     });
+    
     if (event && event.target) {
         const li = event.target.closest('li');
         if (li) li.classList.add('active');
     }
-
+    
+    // Hide all tabs
     document.querySelectorAll('#superAdminMainContent .tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
     
-    const tabId = 'superAdmin' + tabName.charAt(0).toUpperCase() + tabName.slice(1) + 'Tab';
-    const targetTab = document.getElementById(tabId);
-    if (targetTab) targetTab.classList.add('active');
-    
+    // Show selected tab
     if (tabName === 'dashboard') {
-        loadSuperAdminData();
-        loadSuperAdminStats();
+        const adminDashboardTab = document.getElementById('superAdminDashboardTab');
+        if (adminDashboardTab) adminDashboardTab.classList.add('active');
+        await loadSuperAdminDashboard();
+    } else if (tabName === 'admins') {
+        const adminsTab = document.getElementById('superAdminAdminsTab');
+        if (adminsTab) adminsTab.classList.add('active');
+        await loadAdminsList();
+    } else if (tabName === 'allUsers') {
+        const usersTab = document.getElementById('superAdminAllUsersTab');
+        if (usersTab) usersTab.classList.add('active');
+        await loadAllUsersForSuper();
+    } else if (tabName === 'system') {
+        const systemTab = document.getElementById('superAdminSystemTab');
+        if (systemTab) systemTab.classList.add('active');
+        await loadSystemSettingsForSuper();
+    } else if (tabName === 'audit') {
+        const auditTab = document.getElementById('superAdminAuditTab');
+        if (auditTab) auditTab.classList.add('active');
+        await loadAuditLogs();
+    } else if (tabName === 'announcements') {
+        const announcementsTab = document.getElementById('superAdminAnnouncementsTab');
+        if (announcementsTab) announcementsTab.classList.add('active');
+        await loadSuperAnnouncements();
+    } else if (tabName === 'packages') {
+        const packagesTab = document.getElementById('superAdminPackagesTab');
+        if (packagesTab) packagesTab.classList.add('active');
+        await loadPackagesManagement();
+    } else if (tabName === 'transactions') {
+        const transactionsTab = document.getElementById('superAdminTransactionsTab');
+        if (transactionsTab) transactionsTab.classList.add('active');
+        await loadAllTransactions();
+    } else if (tabName === 'backup') {
+        const backupTab = document.getElementById('superAdminBackupTab');
+        if (backupTab) backupTab.classList.add('active');
+        // Backup tab doesn't need data loading
+    } else if (tabName === 'logs') {
+        const logsTab = document.getElementById('superAdminLogsTab');
+        if (logsTab) logsTab.classList.add('active');
+        await loadSystemLogs();
+    } else if (tabName === 'productsManagement') {
+        // Load products for management
+        const productsTab = document.getElementById('superAdminProductsManagementTab');
+        if (productsTab) productsTab.classList.add('active');
+        await loadProducts();
+        renderProductsTable();
+    } else {
+        const targetTab = document.getElementById(tabName + 'Tab');
+        if (targetTab) targetTab.classList.add('active');
+    }
+    
+    // Close sidebar on mobile
+    if (window.innerWidth < 768) {
+        const sidebar = document.getElementById('superAdminSidebar');
+        if (sidebar) sidebar.classList.remove('active');
     }
 }
 
@@ -27521,3 +27650,2238 @@ function closeUserDetailsModal() {
 // Make functions available globally
 window.viewUserDetailsSuper = viewUserDetailsSuper;
 window.closeUserDetailsModal = closeUserDetailsModal;
+
+// ============================================
+// PRODUCT SYSTEM - COMPLETE INTEGRATION
+// ============================================
+
+// Global variables
+let allProducts = [];
+let filteredProducts = [];
+let userProducts = [];
+let selectedProductForPurchase = null;
+let earningsUpdateInterval = null;
+let currentEditingProduct = null;
+
+// ============================================
+// PRODUCT LOADING & MANAGEMENT (SUPER ADMIN)
+// ============================================
+
+/**
+ * Load all products from Firestore
+ */
+async function loadProducts() {
+    console.log('📦 Loading products from Firestore...');
+    
+    try {
+        const snapshot = await db.collection('products')
+            .orderBy('createdAt', 'desc')
+            .get();
+        
+        allProducts = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        filteredProducts = [...allProducts];
+        console.log(`✅ Loaded ${allProducts.length} products`);
+        
+        // Update UI if on relevant tabs
+        if (currentUser) {
+            if (currentUser.role === 'superadmin') {
+                renderProductsTable();
+            }
+            
+            if (document.getElementById('productsMarketTab')?.classList.contains('active')) {
+                await renderProductsMarket();
+            }
+            
+            if (document.getElementById('myProductsTab')?.classList.contains('active')) {
+                await renderMyProducts();
+            }
+        }
+        
+        return allProducts;
+        
+    } catch (error) {
+        console.error('❌ Error loading products:', error);
+        showToast('Error loading products', 'error');
+        return [];
+    }
+}
+
+/**
+ * Render products table for super admin
+ */
+function renderProductsTable() {
+    const tbody = document.getElementById('productsTableBody');
+    if (!tbody) return;
+    
+    if (allProducts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">No products found. Click "Add Product" to create one.</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    allProducts.forEach(product => {
+        const startDate = product.startDate?.toDate() || new Date(product.startDate);
+        const endDate = product.endDate?.toDate() || new Date(product.endDate);
+        const statusClass = product.status === 'active' ? 'success' : 'danger';
+        const isExpired = endDate < new Date();
+        
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(product.name)}</strong></td>
+                <td>${formatMoney(product.minAmount)}</td>
+                <td>${formatMoney(product.maxAmount)}</td>
+                <td>${product.dailyPercent}%</td>
+                <td>${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}</td>
+                <td>${product.durationDays} days</td>
+                <td>
+                    <span class="status-badge ${statusClass}">
+                        ${product.status} ${isExpired && product.status === 'active' ? '(Expired)' : ''}
+                    </span>
+                </td>
+                <td class="action-buttons">
+                    <button class="action-btn small" onclick="editProduct('${product.id}')" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="action-btn small danger" onclick="deleteProduct('${product.id}')" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+/**
+ * Show add product form
+ */
+function showAddProductForm() {
+    currentEditingProduct = null;
+    document.getElementById('productFormTitle').innerHTML = '<i class="fas fa-plus"></i> Add New Product';
+    document.getElementById('productId').value = '';
+    document.getElementById('productForm').reset();
+    clearProductMediaPreview();
+    
+    // Set default dates
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextWeek = new Date(now);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    
+    document.getElementById('productStartDate').value = now.toISOString().slice(0, 16);
+    document.getElementById('productEndDate').value = nextWeek.toISOString().slice(0, 16);
+    document.getElementById('productDurationDays').value = 30;
+    document.getElementById('productDailyPercent').value = 2.5;
+    
+    document.getElementById('productFormModal').classList.add('show');
+}
+
+/**
+ * Edit existing product
+ */
+async function editProduct(productId) {
+    const product = allProducts.find(p => p.id === productId);
+    if (!product) {
+        showToast('Product not found', 'error');
+        return;
+    }
+    
+    currentEditingProduct = product;
+    
+    document.getElementById('productFormTitle').innerHTML = '<i class="fas fa-edit"></i> Edit Product';
+    document.getElementById('productId').value = product.id;
+    document.getElementById('productName').value = product.name;
+    document.getElementById('productDescription').value = product.description || '';
+    document.getElementById('productMediaUrl').value = product.mediaUrl || '';
+    document.getElementById('productMinAmount').value = product.minAmount;
+    document.getElementById('productMaxAmount').value = product.maxAmount;
+    document.getElementById('productDailyPercent').value = product.dailyPercent;
+    document.getElementById('productDurationDays').value = product.durationDays;
+    
+    const startDate = product.startDate?.toDate() || new Date(product.startDate);
+    const endDate = product.endDate?.toDate() || new Date(product.endDate);
+    document.getElementById('productStartDate').value = startDate.toISOString().slice(0, 16);
+    document.getElementById('productEndDate').value = endDate.toISOString().slice(0, 16);
+    document.getElementById('productStatus').value = product.status;
+    
+    // Preview existing media
+    if (product.mediaUrl) {
+        previewProductMedia();
+    }
+    
+    document.getElementById('productFormModal').classList.add('show');
+}
+
+/**
+ * Save product to Firestore
+ */
+async function saveProductToFirestore() {
+    const productId = document.getElementById('productId').value;
+    const name = document.getElementById('productName').value.trim();
+    const description = document.getElementById('productDescription').value.trim();
+    const mediaUrl = document.getElementById('productMediaUrl').value.trim();
+    const minAmount = parseFloat(document.getElementById('productMinAmount').value);
+    const maxAmount = parseFloat(document.getElementById('productMaxAmount').value);
+    const dailyPercent = parseFloat(document.getElementById('productDailyPercent').value);
+    const durationDays = parseInt(document.getElementById('productDurationDays').value);
+    const startDateStr = document.getElementById('productStartDate').value;
+    const endDateStr = document.getElementById('productEndDate').value;
+    const status = document.getElementById('productStatus').value;
+    
+    // Validation
+    if (!name || !description || !minAmount || !maxAmount || !dailyPercent || !durationDays || !startDateStr || !endDateStr) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    if (minAmount >= maxAmount) {
+        showToast('Minimum amount must be less than maximum amount', 'error');
+        return;
+    }
+    
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    
+    if (startDate >= endDate) {
+        showToast('End date must be after start date', 'error');
+        return;
+    }
+    
+    showLoading('Saving product...');
+    
+    try {
+        const productData = {
+            name: name,
+            description: description,
+            mediaUrl: mediaUrl || null,
+            minAmount: minAmount,
+            maxAmount: maxAmount,
+            dailyPercent: dailyPercent,
+            durationDays: durationDays,
+            startDate: firebase.firestore.Timestamp.fromDate(startDate),
+            endDate: firebase.firestore.Timestamp.fromDate(endDate),
+            status: status,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser.uid
+        };
+        
+        if (productId) {
+            // Update existing product
+            await db.collection('products').doc(productId).update(productData);
+            showToast('✅ Product updated successfully!', 'success');
+            await logAudit('product_updated', `Updated product: ${name}`, currentUser.uid);
+        } else {
+            // Create new product
+            productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            productData.createdBy = currentUser.uid;
+            await db.collection('products').add(productData);
+            showToast('✅ Product created successfully!', 'success');
+            await logAudit('product_created', `Created product: ${name}`, currentUser.uid);
+        }
+        
+        closeProductFormModal();
+        await loadProducts();
+        
+    } catch (error) {
+        console.error('Error saving product:', error);
+        showToast('Error saving product: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Delete product
+ */
+async function deleteProduct(productId) {
+    const product = allProducts.find(p => p.id === productId);
+    if (!product) return;
+    
+    if (!confirm(`⚠️ Are you sure you want to delete "${product.name}"?\n\nThis will NOT affect existing user purchases.`)) {
+        return;
+    }
+    
+    showLoading('Deleting product...');
+    
+    try {
+        await db.collection('products').doc(productId).delete();
+        showToast('✅ Product deleted successfully', 'success');
+        await logAudit('product_deleted', `Deleted product: ${product.name}`, currentUser.uid);
+        await loadProducts();
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        showToast('Error deleting product: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// ============================================
+// PRODUCT MEDIA PREVIEW (URL BASED)
+// ============================================
+
+/**
+ * Extract YouTube video ID from URL
+ */
+function extractYouTubeId(url) {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
+/**
+ * Preview product media from URL
+ */
+function previewProductMedia() {
+    const mediaUrl = document.getElementById('productMediaUrl').value.trim();
+    const previewContainer = document.getElementById('productMediaPreview');
+    const previewContent = document.getElementById('previewContent');
+    
+    if (!mediaUrl) {
+        previewContainer.style.display = 'none';
+        return;
+    }
+    
+    const youtubeId = extractYouTubeId(mediaUrl);
+    let mediaHtml = '';
+    
+    if (youtubeId) {
+        mediaHtml = `
+            <div class="youtube-preview">
+                <iframe 
+                    src="https://www.youtube.com/embed/${youtubeId}" 
+                    frameborder="0" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+        `;
+    } else if (mediaUrl.match(/\.(mp4|webm|ogg)$/i)) {
+        mediaHtml = `
+            <video controls>
+                <source src="${mediaUrl}" type="video/mp4">
+                Your browser does not support video.
+            </video>
+        `;
+    } else {
+        mediaHtml = `<img src="${mediaUrl}" alt="Preview" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x300?text=Invalid+URL'">`;
+    }
+    
+    previewContent.innerHTML = mediaHtml;
+    previewContainer.style.display = 'block';
+}
+
+/**
+ * Clear product media preview
+ */
+function clearProductMediaPreview() {
+    document.getElementById('productMediaUrl').value = '';
+    document.getElementById('productMediaPreview').style.display = 'none';
+    document.getElementById('previewContent').innerHTML = '';
+}
+
+/**
+ * Close product form modal
+ */
+function closeProductFormModal() {
+    document.getElementById('productFormModal').classList.remove('show');
+    currentEditingProduct = null;
+}
+
+// ============================================
+// USER PRODUCT MARKETPLACE
+// ============================================
+
+/**
+ * Render products for user marketplace
+ */
+async function renderProductsMarket() {
+    const container = document.getElementById('productsMarketGrid');
+    if (!container) {
+        console.log('productsMarketGrid not found');
+        return;
+    }
+    
+    const now = new Date();
+    const availableProducts = filteredProducts.filter(p => {
+        if (p.status !== 'active') return false;
+        const startDate = p.startDate?.toDate() || new Date(p.startDate);
+        const endDate = p.endDate?.toDate() || new Date(p.endDate);
+        return startDate <= now && endDate >= now;
+    });
+    
+    if (availableProducts.length === 0) {
+        container.innerHTML = `
+            <div class="no-products">
+                <i class="fas fa-box-open"></i>
+                <p>No products available for purchase at this time.</p>
+                <p class="small">Check back later for new investment opportunities!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    for (const product of availableProducts) {
+        const startDate = product.startDate?.toDate() || new Date(product.startDate);
+        const endDate = product.endDate?.toDate() || new Date(product.endDate);
+        const dailyReturnAmount = (product.minAmount * product.dailyPercent) / 100;
+        
+        // Generate media HTML
+        let mediaHtml = generateProductMediaHtml(product, 'card');
+        
+        html += `
+            <div class="product-card" data-product-id="${product.id}">
+                ${mediaHtml}
+                <div class="product-info">
+                    <h3 class="product-name">${escapeHtml(product.name)}</h3>
+                    <p class="product-desc">${escapeHtml(product.description.substring(0, 100))}${product.description.length > 100 ? '...' : ''}</p>
+                    
+                    <div class="product-stats">
+                        <span>💰 Min Investment:</span>
+                        <span>${formatMoney(product.minAmount)}</span>
+                    </div>
+                    <div class="product-stats">
+                        <span>💎 Max Investment:</span>
+                        <span>${formatMoney(product.maxAmount)}</span>
+                    </div>
+                    <div class="product-stats">
+                        <span>📈 Daily Return:</span>
+                        <span class="profit">${product.dailyPercent}% (${formatMoney(dailyReturnAmount)})</span>
+                    </div>
+                    <div class="product-stats">
+                        <span>⏱️ Duration:</span>
+                        <span>${product.durationDays} days</span>
+                    </div>
+                    <div class="product-stats">
+                        <span>📅 Purchase Window:</span>
+                        <span>${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}</span>
+                    </div>
+                    
+                    <div class="product-footer">
+                        <span class="purchase-window">
+                            ${now < startDate ? '🔜 Coming Soon' : '✅ Available'}
+                        </span>
+                        <button class="action-btn" onclick="openPurchaseModal('${product.id}')">
+                            <i class="fas fa-shopping-cart"></i> Invest Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Generate product media HTML based on URL type
+ */
+function generateProductMediaHtml(product, size = 'card') {
+    const youtubeId = extractYouTubeId(product.mediaUrl);
+    const height = size === 'card' ? '200px' : '250px';
+    
+    if (youtubeId) {
+        if (size === 'card') {
+            return `
+                <div class="youtube-thumbnail" style="background-image: url('https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg'); height: ${height};">
+                    <div class="play-button-overlay" onclick="event.stopPropagation(); window.open('https://www.youtube.com/watch?v=${youtubeId}', '_blank')">
+                        <i class="fas fa-play"></i>
+                    </div>
+                </div>
+            `;
+        } else {
+            return `
+                <div class="youtube-preview">
+                    <iframe src="https://www.youtube.com/embed/${youtubeId}" frameborder="0" allowfullscreen></iframe>
+                </div>
+            `;
+        }
+    } else if (product.mediaUrl && product.mediaUrl.match(/\.(mp4|webm|ogg)$/i)) {
+        return `<video class="product-media" style="height: ${height};" controls><source src="${product.mediaUrl}" type="video/mp4"></video>`;
+    } else if (product.mediaUrl) {
+        return `<img src="${product.mediaUrl}" class="product-media" style="height: ${height}; object-fit: cover;" alt="${product.name}" onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">`;
+    } else {
+        return `<div class="product-media" style="height: ${height}; display: flex; align-items: center; justify-content: center; background: #f5f5f5;"><i class="fas fa-box" style="font-size: 48px; color: #ccc;"></i></div>`;
+    }
+}
+
+/**
+ * Filter products by search term
+ */
+function filterProducts() {
+    const searchTerm = document.getElementById('productSearch')?.value.toLowerCase() || '';
+    filteredProducts = allProducts.filter(p => 
+        p.name.toLowerCase().includes(searchTerm) || 
+        (p.description && p.description.toLowerCase().includes(searchTerm))
+    );
+    renderProductsMarket();
+}
+
+/**
+ * Sort products
+ */
+function sortProducts() {
+    const sortBy = document.getElementById('productSort')?.value || 'name';
+    
+    filteredProducts.sort((a, b) => {
+        if (sortBy === 'name') return a.name.localeCompare(b.name);
+        if (sortBy === 'minAmount') return a.minAmount - b.minAmount;
+        if (sortBy === 'dailyPercent') return b.dailyPercent - a.dailyPercent;
+        return 0;
+    });
+    
+    renderProductsMarket();
+}
+
+// ============================================
+// PRODUCT PURCHASE
+// ============================================
+
+/**
+ * Open purchase modal for product
+ */
+function openPurchaseModal(productId) {
+    const product = allProducts.find(p => p.id === productId);
+    if (!product) {
+        showToast('Product not found', 'error');
+        return;
+    }
+    
+    selectedProductForPurchase = product;
+    
+    // Generate media HTML
+    const mediaHtml = generateProductMediaHtml(product, 'modal');
+    
+    document.getElementById('purchaseProductTitle').innerHTML = `<i class="fas fa-shopping-cart"></i> Purchase ${escapeHtml(product.name)}`;
+    document.getElementById('purchaseProductDetails').innerHTML = `
+        ${mediaHtml}
+        <div class="product-info-modal">
+            <p><strong>${escapeHtml(product.name)}</strong></p>
+            <p>${escapeHtml(product.description)}</p>
+            <div class="investment-details">
+                <div class="detail-row">
+                    <span>Min Investment:</span>
+                    <strong>${formatMoney(product.minAmount)}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Max Investment:</span>
+                    <strong>${formatMoney(product.maxAmount)}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Daily Return:</span>
+                    <strong class="profit">${product.dailyPercent}%</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Duration:</span>
+                    <strong>${product.durationDays} days</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Purchase Window:</span>
+                    <strong>${product.startDate.toDate().toLocaleDateString()} - ${product.endDate.toDate().toLocaleDateString()}</strong>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const amountInput = document.getElementById('purchaseAmount');
+    amountInput.min = product.minAmount;
+    amountInput.max = product.maxAmount;
+    amountInput.value = product.minAmount;
+    amountInput.oninput = updatePurchaseCalculations;
+    
+    document.getElementById('purchaseAmountHint').innerHTML = `Enter amount between ${formatMoney(product.minAmount)} and ${formatMoney(product.maxAmount)}`;
+    
+    updatePurchaseCalculations();
+    document.getElementById('productPurchaseModal').classList.add('show');
+}
+
+/**
+ * Update purchase calculations in real-time
+ */
+function updatePurchaseCalculations() {
+    if (!selectedProductForPurchase) return;
+    
+    const amount = parseFloat(document.getElementById('purchaseAmount').value) || 0;
+    const dailyReturn = (amount * selectedProductForPurchase.dailyPercent) / 100;
+    const totalProfit = dailyReturn * selectedProductForPurchase.durationDays;
+    
+    document.getElementById('expectedDailyReturn').innerHTML = `<strong class="profit">${formatMoney(dailyReturn)}</strong>`;
+    document.getElementById('expectedTotalProfit').innerHTML = `<strong class="profit">${formatMoney(totalProfit)}</strong>`;
+}
+
+/**
+ * Close purchase modal
+ */
+function closeProductPurchaseModal() {
+    document.getElementById('productPurchaseModal').classList.remove('show');
+    selectedProductForPurchase = null;
+}
+
+
+// ============================================
+// USER ACTIVE PRODUCTS & EARNINGS
+// ============================================
+
+/**
+ * Load user's active products from Firestore
+ */
+async function loadUserProducts() {
+    if (!currentUser) return;
+    
+    try {
+        const snapshot = await db.collection('userProducts')
+            .where('userId', '==', currentUser.uid)
+            .get();
+        
+        userProducts = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                // Ensure numeric values are numbers
+                durationDays: data.durationDays || 0,
+                dailyProfit: data.dailyProfit || 0,
+                dailyPercent: data.dailyPercent || 0,
+                amount: data.amount || 0,
+                claimedProfit: data.claimedProfit || 0
+            };
+        });
+        
+        console.log('📊 Loaded user products:', userProducts.map(p => ({
+            name: p.productName,
+            durationDays: p.durationDays,
+            dailyProfit: p.dailyProfit,
+            totalExpected: (p.dailyProfit || 0) * (p.durationDays || 0)
+        })));
+        
+        return userProducts;
+        
+    } catch (error) {
+        console.error('Error loading user products:', error);
+        userProducts = [];
+        return [];
+    }
+}
+
+/**
+ * Update user product statuses (check for expired/completed)
+ */
+async function updateUserProductStatuses() {
+    const now = new Date();
+    let updated = false;
+    
+    for (const product of userProducts) {
+        if (product.status === 'active') {
+            const earningsEndDate = product.earningsEndDate?.toDate() || new Date(product.earningsEndDate);
+            
+            if (earningsEndDate < now) {
+                // Product has completed its earning period
+                await db.collection('userProducts').doc(product.id).update({
+                    status: 'completed',
+                    completedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                product.status = 'completed';
+                updated = true;
+            }
+        }
+    }
+    
+    if (updated) {
+        // Reload to get fresh data
+        await loadUserProducts();
+    }
+}
+
+/**
+ * Calculate unclaimed profit for a user product
+ */
+function calculateUnclaimedProfit(userProduct) {
+    const now = new Date();
+    const earningsStart = userProduct.earningsStartDate?.toDate() || new Date(userProduct.earningsStartDate);
+    const earningsEnd = userProduct.earningsEndDate?.toDate() || new Date(userProduct.earningsEndDate);
+    
+    // Not yet started earning
+    if (now < earningsStart) return 0;
+    
+    // Already completed
+    if (now > earningsEnd) {
+        const totalPotential = userProduct.dailyProfit * userProduct.durationDays;
+        return totalPotential - (userProduct.claimedProfit || 0);
+    }
+    
+    // Calculate based on elapsed time since last claim or start
+    const lastClaim = userProduct.lastClaimTimestamp?.toDate() || new Date(userProduct.lastClaimTimestamp);
+    let eligibleStart = lastClaim < earningsStart ? earningsStart : lastClaim;
+    
+    if (eligibleStart >= earningsEnd) return 0;
+    
+    const elapsedMs = now - eligibleStart;
+    const elapsedSeconds = Math.floor(elapsedMs / 1000);
+    const profitPerSecond = userProduct.dailyProfit / 86400; // 24 * 60 * 60
+    
+    return profitPerSecond * elapsedSeconds;
+}
+
+/**
+ * Get total earned so far for a user product
+ */
+function getTotalEarnedSoFar(userProduct) {
+    const unclaimed = calculateUnclaimedProfit(userProduct);
+    return (userProduct.claimedProfit || 0) + unclaimed;
+}
+
+/**
+ * Get progress percentage for a user product
+ */
+function getProductProgress(userProduct) {
+    const totalPotential = (userProduct.dailyProfit || 0) * (userProduct.durationDays || 0);
+    if (totalPotential <= 0) return 0;
+    const earned = getTotalEarnedSoFar(userProduct);
+    const progress = (earned / totalPotential) * 100;
+    return Math.min(progress, 100); // Cap at 100%
+}
+
+
+
+/**
+ * Start real-time earnings updates (every second)
+ */
+let earningsInterval = null;
+
+function startEarningsUpdates() {
+    if (earningsInterval) {
+        clearInterval(earningsInterval);
+    }
+    
+    earningsInterval = setInterval(() => {
+        // Only update if My Products tab is active
+        const myProductsTab = document.getElementById('myProductsTab');
+        if (!myProductsTab || !myProductsTab.classList.contains('active')) {
+            return;
+        }
+        
+        for (const product of userProducts) {
+            if (product.status === 'active') {
+                const unclaimed = calculateUnclaimedProfit(product);
+                const totalEarned = getTotalEarnedSoFar(product);
+                
+                // Update earnings display
+                const earningsSpan = document.getElementById(`earnings-${product.id}`);
+                if (earningsSpan) {
+                    earningsSpan.textContent = formatMoney(totalEarned);
+                }
+                
+                // Update claim button
+                const claimBtn = document.querySelector(`.claim-btn[onclick="claimProductEarnings('${product.id}')"]`);
+                if (claimBtn) {
+                    if (unclaimed <= 0) {
+                        claimBtn.disabled = true;
+                        claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> No earnings yet`;
+                    } else {
+                        claimBtn.disabled = false;
+                        claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}`;
+                    }
+                }
+            }
+        }
+    }, 1000);
+}
+
+/**
+ * Claim earnings from a user product
+ */
+async function claimProductEarnings(userProductId) {
+    const userProduct = userProducts.find(up => up.id === userProductId);
+    if (!userProduct) {
+        showToast('Product not found', 'error');
+        return;
+    }
+    
+    const unclaimed = calculateUnclaimedProfit(userProduct);
+    
+    if (unclaimed <= 0) {
+        showToast('No earnings to claim', 'warning');
+        return;
+    }
+    
+    showLoading('Claiming earnings...');
+    
+    try {
+        const now = new Date();
+        const userProductRef = db.collection('userProducts').doc(userProductId);
+        
+        // Update user product
+        await userProductRef.update({
+            claimedProfit: firebase.firestore.FieldValue.increment(unclaimed),
+            lastClaimTimestamp: firebase.firestore.Timestamp.fromDate(now)
+        });
+        
+        // Add to user balance
+        const userRef = db.collection('users').doc(currentUser.uid);
+        await userRef.update({
+            balance: firebase.firestore.FieldValue.increment(unclaimed),
+            totalEarned: firebase.firestore.FieldValue.increment(unclaimed),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'product_profit',
+                description: `Profit from ${userProduct.productName}`,
+                amount: unclaimed,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    productId: userProduct.productId,
+                    productName: userProduct.productName
+                }
+            })
+        });
+        
+        // Update local data
+        currentUser.balance += unclaimed;
+        currentUser.totalEarned += unclaimed;
+        userProduct.claimedProfit += unclaimed;
+        userProduct.lastClaimTimestamp = firebase.firestore.Timestamp.fromDate(now);
+        
+        showToast(`✅ Claimed ${formatMoney(unclaimed)} from ${userProduct.productName}!`, 'success');
+        
+        // Refresh display
+        await renderMyProducts();
+        await loadUserData(); // Update main balance display
+        
+    } catch (error) {
+        console.error('Error claiming earnings:', error);
+        showToast('Error claiming earnings: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function confirmProductPurchase() {
+    if (!selectedProductForPurchase) {
+        showToast('No product selected', 'error');
+        return;
+    }
+    
+    const amount = parseFloat(document.getElementById('purchaseAmount').value);
+    
+    if (isNaN(amount) || amount < selectedProductForPurchase.minAmount) {
+        showToast(`Minimum investment is ${formatMoney(selectedProductForPurchase.minAmount)}`, 'error');
+        return;
+    }
+    
+    if (amount > selectedProductForPurchase.maxAmount) {
+        showToast(`Maximum investment is ${formatMoney(selectedProductForPurchase.maxAmount)}`, 'error');
+        return;
+    }
+    
+    if ((currentUser.balance || 0) < amount) {
+        showToast(`Insufficient balance! Available: ${formatMoney(currentUser.balance || 0)}`, 'error');
+        return;
+    }
+    
+    showLoading('Processing purchase...');
+    
+    try {
+        // ============================================
+        // CRITICAL: Calculate ALL values BEFORE saving
+        // ============================================
+        const dailyProfit = (amount * selectedProductForPurchase.dailyPercent) / 100;
+        const durationDays = selectedProductForPurchase.durationDays; // ← GET DURATION
+        const totalExpected = dailyProfit * durationDays; // Calculate total expected
+        
+        const purchaseDate = new Date();
+        
+        // Calculate earnings dates
+        const endDate = selectedProductForPurchase.endDate.toDate();
+        const earningsStartDate = new Date(endDate);
+        earningsStartDate.setDate(earningsStartDate.getDate() + 1);
+        earningsStartDate.setHours(0, 0, 0, 0);
+        
+        const earningsEndDate = new Date(earningsStartDate);
+        earningsEndDate.setDate(earningsEndDate.getDate() + durationDays);
+        
+        console.log('📊 Purchase Debug:');
+        console.log('  - Product:', selectedProductForPurchase.name);
+        console.log('  - Amount:', amount);
+        console.log('  - Daily Percent:', selectedProductForPurchase.dailyPercent);
+        console.log('  - Daily Profit:', dailyProfit);
+        console.log('  - Duration Days:', durationDays);
+        console.log('  - Total Expected:', totalExpected);
+        console.log('  - Earnings Start:', earningsStartDate);
+        console.log('  - Earnings End:', earningsEndDate);
+        
+        // ============================================
+        // SAVE WITH ALL FIELDS - ESPECIALLY DURATION
+        // ============================================
+        const userProduct = {
+            userId: currentUser.uid,
+            productId: selectedProductForPurchase.id,
+            productName: selectedProductForPurchase.name,
+            productMediaUrl: selectedProductForPurchase.mediaUrl || null,
+            productDescription: selectedProductForPurchase.description || '',
+            amount: amount,
+            dailyPercent: selectedProductForPurchase.dailyPercent,
+            dailyProfit: dailyProfit,
+            durationDays: durationDays, // ← CRITICAL: Save duration
+            totalExpected: totalExpected, // ← Save total expected for quick access
+            purchaseDate: firebase.firestore.Timestamp.fromDate(purchaseDate),
+            earningsStartDate: firebase.firestore.Timestamp.fromDate(earningsStartDate),
+            earningsEndDate: firebase.firestore.Timestamp.fromDate(earningsEndDate),
+            lastClaimTimestamp: firebase.firestore.Timestamp.fromDate(earningsStartDate),
+            claimedProfit: 0,
+            status: 'active',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        // Save to Firestore
+        const docRef = await db.collection('userProducts').add(userProduct);
+        console.log('✅ Product saved with ID:', docRef.id);
+        console.log('✅ Duration saved:', durationDays, 'days');
+        
+        // Deduct from user balance
+        const userRef = db.collection('users').doc(currentUser.uid);
+        await userRef.update({
+            balance: firebase.firestore.FieldValue.increment(-amount),
+            totalInvested: firebase.firestore.FieldValue.increment(amount),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'product_purchase',
+                description: `Purchased ${selectedProductForPurchase.name} - ${formatMoney(amount)} (${durationDays} days)`,
+                amount: amount,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    productId: selectedProductForPurchase.id,
+                    productName: selectedProductForPurchase.name,
+                    dailyPercent: selectedProductForPurchase.dailyPercent,
+                    durationDays: durationDays,
+                    totalExpected: totalExpected
+                }
+            })
+        });
+        
+        // Update local user
+        currentUser.balance -= amount;
+        currentUser.totalInvested += amount;
+        
+        // Add notification
+        await addNotification(
+            currentUser.uid,
+            '📦 Product Purchased!',
+            `You invested ${formatMoney(amount)} in ${selectedProductForPurchase.name}. Duration: ${durationDays} days. Total expected: ${formatMoney(totalExpected)}.`,
+            'success'
+        );
+        
+        showToast(`✅ Successfully invested ${formatMoney(amount)} in ${selectedProductForPurchase.name}!`, 'success');
+        
+        closeProductPurchaseModal();
+        
+        // Reload and refresh
+        await loadMyProducts();
+        await renderMyProducts();
+        
+        // Switch to My Products tab to show the investment
+        switchUserTab('myProducts');
+        
+    } catch (error) {
+        console.error('Purchase error:', error);
+        showToast('Error processing purchase: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// ============================================
+// EXPORT FUNCTIONS TO GLOBAL SCOPE
+// ============================================
+
+// Product Management (Super Admin)
+window.loadProducts = loadProducts;
+window.showAddProductForm = showAddProductForm;
+window.closeProductFormModal = closeProductFormModal;
+window.saveProductToFirestore = saveProductToFirestore;
+window.editProduct = editProduct;
+window.deleteProduct = deleteProduct;
+window.previewProductMedia = previewProductMedia;
+window.clearProductMediaPreview = clearProductMediaPreview;
+
+// User Marketplace
+window.renderProductsMarket = renderProductsMarket;
+window.filterProducts = filterProducts;
+window.sortProducts = sortProducts;
+window.openPurchaseModal = openPurchaseModal;
+window.closeProductPurchaseModal = closeProductPurchaseModal;
+window.confirmProductPurchase = confirmProductPurchase;
+
+// User Products
+window.loadUserProducts = loadUserProducts;
+window.renderMyProducts = renderMyProducts;
+window.claimProductEarnings = claimProductEarnings;
+
+// Utilities
+window.extractYouTubeId = extractYouTubeId;
+window.generateProductMediaHtml = generateProductMediaHtml;
+
+console.log('✅ Advanced Product System Loaded');
+
+async function debugUserProduct(userProductId) {
+    console.log('=== DEBUG USER PRODUCT ===');
+    
+    const doc = await db.collection('userProducts').doc(userProductId).get();
+    if (doc.exists) {
+        const data = doc.data();
+        console.log('Product Data:', {
+            productName: data.productName,
+            amount: data.amount,
+            dailyProfit: data.dailyProfit,
+            durationDays: data.durationDays,
+            dailyPercent: data.dailyPercent,
+            earningsStartDate: data.earningsStartDate?.toDate(),
+            earningsEndDate: data.earningsEndDate?.toDate(),
+            status: data.status
+        });
+        
+        // Calculate expected values
+        const totalExpected = (data.dailyProfit || 0) * (data.durationDays || 0);
+        console.log('Calculated:', {
+            totalExpected: totalExpected,
+            hasDuration: !!data.durationDays,
+            hasDailyProfit: !!data.dailyProfit
+        });
+    } else {
+        console.log('Product not found');
+    }
+    
+    console.log('=== END DEBUG ===');
+}
+
+// Make available globally
+window.debugUserProduct = debugUserProduct;
+
+async function migrateUserProducts() {
+    console.log('Migrating user products to add durationDays...');
+    
+    const snapshot = await db.collection('userProducts').get();
+    let updated = 0;
+    
+    for (const doc of snapshot.docs) {
+        const data = doc.data();
+        
+        // If durationDays is missing, try to get it from the original product
+        if (!data.durationDays && data.productId) {
+            const productDoc = await db.collection('products').doc(data.productId).get();
+            if (productDoc.exists) {
+                const product = productDoc.data();
+                await doc.ref.update({
+                    durationDays: product.durationDays || 30
+                });
+                updated++;
+                console.log(`Updated ${data.productName} with duration: ${product.durationDays}`);
+            }
+        }
+    }
+    
+    console.log(`✅ Migrated ${updated} user products`);
+    showToast(`Migrated ${updated} products with duration field`, 'success');
+}
+
+// Make available globally
+window.migrateUserProducts = migrateUserProducts;
+
+// Toggle between grid and list view
+function toggleProductView(view) {
+    const grid = document.getElementById('productsMarketGrid');
+    if (!grid) return;
+    
+    if (view === 'list') {
+        grid.classList.add('list-view');
+    } else {
+        grid.classList.remove('list-view');
+    }
+    
+    // Update active button
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-view') === view) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Save preference
+    localStorage.setItem('productViewPreference', view);
+}
+
+// Load saved view preference
+function loadViewPreference() {
+    const savedView = localStorage.getItem('productViewPreference');
+    if (savedView) {
+        toggleProductView(savedView);
+    }
+}
+
+// Call this when products market loads
+loadViewPreference();
+
+// ============================================
+// REAL-TIME PRODUCT EARNINGS - COMPLETE FIX
+// ============================================
+
+let lastUpdateTimestamp = null;
+
+/**
+ * Calculate unclaimed profit for a user product (ACCURATE)
+ */
+function calculateUnclaimedProfit(userProduct) {
+    try {
+        // Get current time
+        const now = new Date();
+        
+        // Get earnings start and end dates
+        let earningsStart, earningsEnd;
+        
+        if (userProduct.earningsStartDate) {
+            earningsStart = userProduct.earningsStartDate.toDate ? 
+                userProduct.earningsStartDate.toDate() : 
+                new Date(userProduct.earningsStartDate);
+        } else {
+            return 0;
+        }
+        
+        if (userProduct.earningsEndDate) {
+            earningsEnd = userProduct.earningsEndDate.toDate ? 
+                userProduct.earningsEndDate.toDate() : 
+                new Date(userProduct.earningsEndDate);
+        } else {
+            return 0;
+        }
+        
+        // Not yet started earning
+        if (now < earningsStart) {
+            return 0;
+        }
+        
+        // Already completed
+        if (now > earningsEnd) {
+            const totalPotential = (userProduct.dailyProfit || 0) * (userProduct.durationDays || 0);
+            const claimed = userProduct.claimedProfit || 0;
+            return Math.max(0, totalPotential - claimed);
+        }
+        
+        // Get last claim timestamp
+        let lastClaim = earningsStart;
+        if (userProduct.lastClaimTimestamp) {
+            lastClaim = userProduct.lastClaimTimestamp.toDate ? 
+                userProduct.lastClaimTimestamp.toDate() : 
+                new Date(userProduct.lastClaimTimestamp);
+        }
+        
+        // Ensure last claim is not before earnings start
+        if (lastClaim < earningsStart) {
+            lastClaim = earningsStart;
+        }
+        
+        // Calculate elapsed milliseconds since last claim
+        const elapsedMs = now - lastClaim;
+        
+        // Calculate profit per second
+        const profitPerSecond = (userProduct.dailyProfit || 0) / 86400;
+        
+        // Calculate unclaimed profit
+        const unclaimed = profitPerSecond * (elapsedMs / 1000);
+        
+        // Round to 2 decimal places and return
+        return Math.max(0, Math.floor(unclaimed));
+        
+    } catch (error) {
+        console.error('Error calculating unclaimed profit:', error);
+        return 0;
+    }
+}
+
+/**
+ * Get total earned so far for a user product
+ */
+function getTotalEarnedSoFar(userProduct) {
+    const claimed = userProduct.claimedProfit || 0;
+    const unclaimed = calculateUnclaimedProfit(userProduct);
+    return claimed + unclaimed;
+}
+
+/**
+ * Get progress percentage for a user product
+ */
+function getProductProgress(userProduct) {
+    const totalPotential = (userProduct.dailyProfit || 0) * (userProduct.durationDays || 0);
+    if (totalPotential <= 0) return 0;
+    const earned = getTotalEarnedSoFar(userProduct);
+    const progress = (earned / totalPotential) * 100;
+    return Math.min(progress, 100);
+}
+
+/**
+ * Load user's active products from Firestore
+ */
+async function loadUserProducts() {
+    if (!currentUser) return [];
+    
+    try {
+        const snapshot = await db.collection('userProducts')
+            .where('userId', '==', currentUser.uid)
+            .get();
+        
+        userProducts = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                durationDays: data.durationDays || 0,
+                dailyProfit: data.dailyProfit || 0,
+                dailyPercent: data.dailyPercent || 0,
+                amount: data.amount || 0,
+                claimedProfit: data.claimedProfit || 0
+            };
+        });
+        
+        console.log(`📊 Loaded ${userProducts.length} user products`);
+        
+        // Update statuses
+        await updateUserProductStatuses();
+        
+        return userProducts;
+        
+    } catch (error) {
+        console.error('Error loading user products:', error);
+        userProducts = [];
+        return [];
+    }
+}
+
+/**
+ * Update user product statuses
+ */
+async function updateUserProductStatuses() {
+    const now = new Date();
+    let updated = false;
+    
+    for (const product of userProducts) {
+        if (product.status === 'active') {
+            let earningsEnd;
+            if (product.earningsEndDate) {
+                earningsEnd = product.earningsEndDate.toDate ? 
+                    product.earningsEndDate.toDate() : 
+                    new Date(product.earningsEndDate);
+            }
+            
+            if (earningsEnd && earningsEnd < now) {
+                await db.collection('userProducts').doc(product.id).update({
+                    status: 'completed',
+                    completedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                product.status = 'completed';
+                updated = true;
+            }
+        }
+    }
+    
+    if (updated) {
+        await loadUserProducts();
+    }
+}
+
+async function renderMyProducts() {
+    const container = document.getElementById('myProductsList');
+    if (!container) return;
+    
+    await loadMyProducts();
+    
+    if (myProductsList.length === 0) {
+        container.innerHTML = `
+            <div class="no-products">
+                <i class="fas fa-chart-line"></i>
+                <p>You haven't invested in any products yet.</p>
+                <button onclick="switchUserTab('productsMarket')" class="action-btn">
+                    <i class="fas fa-store"></i> Browse Products
+                </button>
+            </div>
+        `;
+        updateSummaryStats();
+        return;
+    }
+    
+    let html = '';
+    
+    for (const product of myProductsList) {
+        const now = new Date();
+        
+        // Use stored duration or calculate from dates
+        const durationDays = product.durationDays > 0 ? product.durationDays :
+            Math.round((product.earningsEndDate - product.earningsStartDate) / (1000 * 60 * 60 * 24));
+        
+        // Calculate values using duration
+        const totalExpected = product.totalExpected > 0 ? product.totalExpected : (product.dailyProfit * durationDays);
+        const unclaimed = calculateCurrentUnclaimed(product);
+        const totalEarned = product.claimedProfit + unclaimed;
+        const progress = totalExpected > 0 ? (totalEarned / totalExpected) * 100 : 0;
+        
+        const timeRemaining = getTimeRemaining(product.earningsEndDate);
+        const timeUntilStart = getTimeUntilStart(product.earningsStartDate);
+        
+        // Determine status display
+        let statusClass = 'active';
+        let statusText = 'Active';
+        
+        if (now < product.earningsStartDate) {
+            statusClass = 'waiting';
+            statusText = 'Waiting';
+        } else if (now > product.earningsEndDate || product.status === 'completed') {
+            statusClass = 'completed';
+            statusText = 'Completed';
+        }
+        
+        // Generate media preview
+        let mediaHtml = '';
+        const youtubeId = extractYouTubeId(product.productMediaUrl);
+        if (youtubeId) {
+            mediaHtml = `<img src="https://img.youtube.com/vi/${youtubeId}/default.jpg" alt="${product.productName}">`;
+        } else if (product.productMediaUrl) {
+            mediaHtml = `<img src="${product.productMediaUrl}" alt="${product.productName}" onerror="this.src='https://via.placeholder.com/50'">`;
+        } else {
+            mediaHtml = `<i class="fas fa-box"></i>`;
+        }
+        
+        html += `
+            <div class="product-item ${statusClass}" id="product-${product.id}">
+                <div class="product-header">
+                    <div class="product-title">
+                        <div class="product-icon">
+                            ${mediaHtml}
+                        </div>
+                        <div>
+                            <h3 class="product-name">${escapeHtml(product.productName)}</h3>
+                            <div class="product-meta">
+                                Invested: ${formatMoney(product.amount)} at ${product.dailyPercent}% daily
+                            </div>
+                        </div>
+                    </div>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+                
+                <div class="product-details-grid">
+                    <div class="detail-card">
+                        <span class="detail-label">Daily Profit</span>
+                        <span class="detail-value profit">${formatMoney(product.dailyProfit)}</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Duration</span>
+                        <span class="detail-value">${durationDays} days</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Period</span>
+                        <span class="detail-value">${product.earningsStartDate.toLocaleDateString()} - ${product.earningsEndDate.toLocaleDateString()}</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Total Expected</span>
+                        <span class="detail-value profit">${formatMoney(totalExpected)}</span>
+                    </div>
+                </div>
+                
+                ${now < product.earningsStartDate ? `
+                    <div class="timer-display">
+                        <div class="timer-label">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span>Earnings Start In:</span>
+                        </div>
+                        <div class="timer-value">${timeUntilStart.text}</div>
+                    </div>
+                ` : now <= product.earningsEndDate ? `
+                    <div class="timer-display">
+                        <div class="timer-label">
+                            <i class="fas fa-clock"></i>
+                            <span>Time Remaining:</span>
+                        </div>
+                        <div class="timer-value">${timeRemaining.text}</div>
+                    </div>
+                ` : ''}
+                
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <span>Progress</span>
+                        <span>${progress.toFixed(1)}%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-${product.id}" style="width: ${progress}%"></div>
+                    </div>
+                </div>
+                
+                <div class="earnings-section">
+                    <div class="earnings-info">
+                        <div class="earnings-item">
+                            <span class="earnings-label">Total Earned</span>
+                            <span class="earnings-amount" id="earned-${product.id}">${formatMoney(totalEarned)}</span>
+                        </div>
+                        <div class="earnings-item">
+                            <span class="earnings-label">Available to Claim</span>
+                            <span class="earnings-amount" id="unclaimed-${product.id}">${formatMoney(unclaimed)}</span>
+                        </div>
+                    </div>
+                    <button class="claim-btn" id="claimBtn-${product.id}" onclick="claimProductEarnings('${product.id}')" ${unclaimed <= 0 ? 'disabled' : ''}>
+                        <i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+    updateSummaryStats();
+    startRealTimeUpdates();
+}
+
+/**
+ * Start real-time earnings updates (UPDATES EVERY SECOND)
+ */
+function startEarningsUpdates() {
+    // Clear existing interval
+    if (earningsUpdateInterval) {
+        clearInterval(earningsUpdateInterval);
+        earningsUpdateInterval = null;
+    }
+    
+    console.log('🔄 Starting real-time earnings updates...');
+    
+    // Update immediately
+    updateAllEarningsDisplays();
+    
+    // Set interval to update every second
+    earningsUpdateInterval = setInterval(() => {
+        updateAllEarningsDisplays();
+    }, 1000);
+}
+
+/**
+ * Stop earnings updates
+ */
+function stopEarningsUpdates() {
+    if (earningsUpdateInterval) {
+        clearInterval(earningsUpdateInterval);
+        earningsUpdateInterval = null;
+        console.log('⏹️ Stopped real-time earnings updates');
+    }
+}
+
+/**
+ * Update all earnings displays (called every second)
+ */
+async function updateAllEarningsDisplays() {
+    // Check if My Products tab is active
+    const myProductsTab = document.getElementById('myProductsTab');
+    if (!myProductsTab || !myProductsTab.classList.contains('active')) {
+        return;
+    }
+    
+    // Reload user products to get latest data
+    await loadUserProducts();
+    
+    // Update each product's display
+    for (const product of userProducts) {
+        if (product.status === 'active' || product.status === 'waiting') {
+            const unclaimed = calculateUnclaimedProfit(product);
+            const totalEarned = getTotalEarnedSoFar(product);
+            const progress = getProductProgress(product);
+            
+            // Update earnings display
+            const earningsSpan = document.getElementById(`earnings-${product.id}`);
+            if (earningsSpan) {
+                earningsSpan.textContent = formatMoney(totalEarned);
+            }
+            
+            // Update progress bar
+            const progressFill = document.getElementById(`progress-${product.id}`);
+            if (progressFill) {
+                progressFill.style.width = `${progress}%`;
+            }
+            
+            // Update claim button
+            const claimBtn = document.getElementById(`claimBtn-${product.id}`);
+            if (claimBtn) {
+                if (unclaimed <= 0) {
+                    claimBtn.disabled = true;
+                    claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> No earnings yet`;
+                } else {
+                    claimBtn.disabled = false;
+                    claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}`;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Claim earnings from a user product
+ */
+async function claimProductEarnings(userProductId) {
+    const userProduct = userProducts.find(up => up.id === userProductId);
+    if (!userProduct) {
+        showToast('Product not found', 'error');
+        return;
+    }
+    
+    const unclaimed = calculateUnclaimedProfit(userProduct);
+    
+    if (unclaimed <= 0) {
+        showToast('No earnings to claim', 'warning');
+        return;
+    }
+    
+    showLoading('Claiming earnings...');
+    
+    try {
+        const now = new Date();
+        const userProductRef = db.collection('userProducts').doc(userProductId);
+        
+        // Update user product
+        await userProductRef.update({
+            claimedProfit: firebase.firestore.FieldValue.increment(unclaimed),
+            lastClaimTimestamp: firebase.firestore.Timestamp.fromDate(now)
+        });
+        
+        // Add to user balance
+        const userRef = db.collection('users').doc(currentUser.uid);
+        await userRef.update({
+            balance: firebase.firestore.FieldValue.increment(unclaimed),
+            totalEarned: firebase.firestore.FieldValue.increment(unclaimed),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'product_profit',
+                description: `Profit from ${userProduct.productName}`,
+                amount: unclaimed,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    productId: userProduct.productId,
+                    productName: userProduct.productName
+                }
+            })
+        });
+        
+        // Update local data
+        currentUser.balance = (currentUser.balance || 0) + unclaimed;
+        currentUser.totalEarned = (currentUser.totalEarned || 0) + unclaimed;
+        
+        // Update local product data
+        userProduct.claimedProfit = (userProduct.claimedProfit || 0) + unclaimed;
+        userProduct.lastClaimTimestamp = firebase.firestore.Timestamp.fromDate(now);
+        
+        showToast(`✅ Claimed ${formatMoney(unclaimed)} from ${userProduct.productName}!`, 'success');
+        
+        // Refresh displays
+        await loadUserData(); // Update main balance
+        await updateAllEarningsDisplays(); // Update product displays
+        
+    } catch (error) {
+        console.error('Error claiming earnings:', error);
+        showToast('Error claiming earnings: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Debug function to check product earnings
+ */
+async function debugProductEarnings(productId) {
+    console.log('=== DEBUG PRODUCT EARNINGS ===');
+    
+    const product = userProducts.find(p => p.id === productId);
+    if (!product) {
+        console.log('Product not found in loaded products');
+        return;
+    }
+    
+    console.log('Product:', product.productName);
+    console.log('Amount:', product.amount);
+    console.log('Daily Profit:', product.dailyProfit);
+    console.log('Duration Days:', product.durationDays);
+    console.log('Claimed Profit:', product.claimedProfit);
+    
+    const unclaimed = calculateUnclaimedProfit(product);
+    const totalEarned = getTotalEarnedSoFar(product);
+    const totalExpected = product.dailyProfit * product.durationDays;
+    const progress = getProductProgress(product);
+    
+    console.log('Calculated Values:');
+    console.log('- Unclaimed:', unclaimed);
+    console.log('- Total Earned:', totalEarned);
+    console.log('- Total Expected:', totalExpected);
+    console.log('- Progress:', progress.toFixed(2) + '%');
+    
+    // Check dates
+    if (product.earningsStartDate) {
+        const start = product.earningsStartDate.toDate();
+        console.log('- Earnings Start:', start.toLocaleString());
+    }
+    if (product.earningsEndDate) {
+        const end = product.earningsEndDate.toDate();
+        console.log('- Earnings End:', end.toLocaleString());
+    }
+    
+    console.log('=== END DEBUG ===');
+    
+    return { unclaimed, totalEarned, totalExpected, progress };
+}
+
+// Make debug function available globally
+window.debugProductEarnings = debugProductEarnings;
+
+// ============================================
+// MY PRODUCTS - COMPLETE WORKING SOLUTION
+// ============================================
+
+let myProductsList = [];
+
+
+/**
+ * Load user products from Firestore
+ */
+async function loadMyProducts() {
+    if (!currentUser) return [];
+    
+    try {
+        const snapshot = await db.collection('userProducts')
+            .where('userId', '==', currentUser.uid)
+            .get();
+        
+        myProductsList = snapshot.docs.map(doc => {
+            const data = doc.data();
+            
+            // Ensure durationDays has a value
+            let durationDays = data.durationDays || 0;
+            let dailyProfit = data.dailyProfit || 0;
+            
+            // If duration is missing but we have dates, calculate it
+            if (durationDays === 0 && data.earningsStartDate && data.earningsEndDate) {
+                const start = data.earningsStartDate.toDate();
+                const end = data.earningsEndDate.toDate();
+                durationDays = Math.round((end - start) / (1000 * 60 * 60 * 24));
+                console.log(`Recalculated duration for ${data.productName}: ${durationDays} days`);
+            }
+            
+            // If dailyProfit is missing but we have amount and percent, calculate it
+            if (dailyProfit === 0 && data.amount && data.dailyPercent) {
+                dailyProfit = (data.amount * data.dailyPercent) / 100;
+                console.log(`Recalculated dailyProfit for ${data.productName}: ${dailyProfit}`);
+            }
+            
+            return {
+                id: doc.id,
+                productId: data.productId,
+                productName: data.productName || 'Unknown Product',
+                productMediaUrl: data.productMediaUrl || null,
+                amount: data.amount || 0,
+                dailyPercent: data.dailyPercent || 0,
+                dailyProfit: dailyProfit,
+                durationDays: durationDays,
+                totalExpected: data.totalExpected || (dailyProfit * durationDays),
+                claimedProfit: data.claimedProfit || 0,
+                status: data.status || 'active',
+                purchaseDate: data.purchaseDate?.toDate() || new Date(data.purchaseDate),
+                earningsStartDate: data.earningsStartDate?.toDate() || new Date(data.earningsStartDate),
+                earningsEndDate: data.earningsEndDate?.toDate() || new Date(data.earningsEndDate),
+                lastClaimTimestamp: data.lastClaimTimestamp?.toDate() || new Date(data.lastClaimTimestamp),
+                createdAt: data.createdAt?.toDate() || new Date(data.createdAt)
+            };
+        });
+        
+        console.log(`📦 Loaded ${myProductsList.length} products with durations:`,
+            myProductsList.map(p => ({ name: p.productName, duration: p.durationDays, expected: p.totalExpected })));
+        
+        return myProductsList;
+        
+    } catch (error) {
+        console.error('Error loading products:', error);
+        myProductsList = [];
+        return [];
+    }
+}
+/**
+ * Calculate current unclaimed profit for a product
+ */
+function calculateCurrentUnclaimed(product) {
+    const now = new Date();
+    
+    // Check if earnings period has started
+    if (now < product.earningsStartDate) {
+        return 0;
+    }
+    
+    // Check if earnings period has ended
+    if (now > product.earningsEndDate) {
+        return Math.max(0, product.totalExpected - product.claimedProfit);
+    }
+    
+    // Calculate elapsed time since last claim or start
+    let lastClaim = product.lastClaimTimestamp;
+    if (!lastClaim || lastClaim < product.earningsStartDate) {
+        lastClaim = product.earningsStartDate;
+    }
+    
+    const elapsedMs = now - lastClaim;
+    const elapsedSeconds = elapsedMs / 1000;
+    const profitPerSecond = product.dailyProfit / 86400; // 24 * 60 * 60
+    
+    let unclaimed = profitPerSecond * elapsedSeconds;
+    
+    // Don't exceed remaining profit
+    const remaining = product.totalExpected - product.claimedProfit;
+    unclaimed = Math.min(unclaimed, remaining);
+    
+    return Math.max(0, Math.floor(unclaimed));
+}
+
+/**
+ * Calculate total earned so far
+ */
+function calculateTotalEarned(product) {
+    return product.claimedProfit + calculateCurrentUnclaimed(product);
+}
+
+/**
+ * Calculate progress percentage
+ */
+function calculateProgress(product) {
+    if (product.totalExpected <= 0) return 0;
+    const earned = calculateTotalEarned(product);
+    return Math.min(100, (earned / product.totalExpected) * 100);
+}
+
+/**
+ * Get time remaining until earnings end
+ */
+function getTimeRemaining(endDate) {
+    const now = new Date();
+    const diff = endDate - now;
+    
+    if (diff <= 0) return { ended: true, text: 'Completed' };
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (86400000)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (3600000)) / (1000 * 60));
+    const seconds = Math.floor((diff % (60000)) / 1000);
+    
+    if (days > 0) return { ended: false, text: `${days}d ${hours}h remaining` };
+    if (hours > 0) return { ended: false, text: `${hours}h ${minutes}m remaining` };
+    if (minutes > 0) return { ended: false, text: `${minutes}m ${seconds}s remaining` };
+    return { ended: false, text: `${seconds}s remaining` };
+}
+
+/**
+ * Get time until earnings start
+ */
+function getTimeUntilStart(startDate) {
+    const now = new Date();
+    const diff = startDate - now;
+    
+    if (diff <= 0) return { started: true, text: 'Earning now!' };
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (86400000)) / (1000 * 60 * 60));
+    
+    if (days > 0) return { started: false, text: `Starts in ${days}d ${hours}h` };
+    if (hours > 0) return { started: false, text: `Starts in ${hours}h` };
+    return { started: false, text: `Starts soon` };
+}
+
+/**
+ * Update summary statistics
+ */
+function updateSummaryStats() {
+    const totalInvested = myProductsList.reduce((sum, p) => sum + p.amount, 0);
+    const totalEarned = myProductsList.reduce((sum, p) => sum + calculateTotalEarned(p), 0);
+    const activeCount = myProductsList.filter(p => p.status === 'active' && new Date() <= p.earningsEndDate).length;
+    
+    // Calculate today's earnings (last 24 hours)
+    const todayEarnings = myProductsList.reduce((sum, p) => {
+        if (p.status === 'active' && new Date() >= p.earningsStartDate) {
+            return sum + p.dailyProfit;
+        }
+        return sum;
+    }, 0);
+    
+    document.getElementById('totalInvestedAmount').innerHTML = formatMoney(totalInvested);
+    document.getElementById('totalEarnedAmount').innerHTML = formatMoney(totalEarned);
+    document.getElementById('activeInvestmentsCount').innerHTML = activeCount;
+    document.getElementById('todayEarnings').innerHTML = formatMoney(todayEarnings);
+}
+
+/**
+ * Render all my products
+ */
+async function renderMyProducts() {
+    const container = document.getElementById('myProductsList');
+    if (!container) return;
+    
+    await loadMyProducts();
+    
+    if (myProductsList.length === 0) {
+        container.innerHTML = `
+            <div class="no-products">
+                <i class="fas fa-chart-line"></i>
+                <p>You haven't invested in any products yet.</p>
+                <button onclick="switchUserTab('productsMarket')" class="action-btn">
+                    <i class="fas fa-store"></i> Browse Products
+                </button>
+            </div>
+        `;
+        updateSummaryStats();
+        return;
+    }
+    
+    let html = '';
+    
+    for (const product of myProductsList) {
+        const now = new Date();
+        const unclaimed = calculateCurrentUnclaimed(product);
+        const totalEarned = calculateTotalEarned(product);
+        const progress = calculateProgress(product);
+        const timeRemaining = getTimeRemaining(product.earningsEndDate);
+        const timeUntilStart = getTimeUntilStart(product.earningsStartDate);
+        
+        // Determine status display
+        let statusClass = 'active';
+        let statusText = 'Active';
+        
+        if (now < product.earningsStartDate) {
+            statusClass = 'waiting';
+            statusText = 'Waiting';
+        } else if (now > product.earningsEndDate || product.status === 'completed') {
+            statusClass = 'completed';
+            statusText = 'Completed';
+        }
+        
+        // Generate media preview
+        let mediaHtml = '';
+        const youtubeId = extractYouTubeId(product.productMediaUrl);
+        if (youtubeId) {
+            mediaHtml = `<img src="https://img.youtube.com/vi/${youtubeId}/default.jpg" alt="${product.productName}">`;
+        } else if (product.productMediaUrl) {
+            mediaHtml = `<img src="${product.productMediaUrl}" alt="${product.productName}" onerror="this.src='https://via.placeholder.com/50'">`;
+        } else {
+            mediaHtml = `<i class="fas fa-box"></i>`;
+        }
+        
+        html += `
+            <div class="product-item ${statusClass}" id="product-${product.id}">
+                <div class="product-header">
+                    <div class="product-title">
+                        <div class="product-icon">
+                            ${mediaHtml}
+                        </div>
+                        <div>
+                            <h3 class="product-name">${escapeHtml(product.productName)}</h3>
+                            <div class="product-meta">
+                                Invested: ${formatMoney(product.amount)} at ${product.dailyPercent}% daily
+                            </div>
+                        </div>
+                    </div>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+                
+                <div class="product-details-grid">
+                    <div class="detail-card">
+                        <span class="detail-label">Daily Profit</span>
+                        <span class="detail-value profit">${formatMoney(product.dailyProfit)}</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Duration</span>
+                        <span class="detail-value">${product.durationDays} days</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Period</span>
+                        <span class="detail-value">${product.earningsStartDate.toLocaleDateString()} - ${product.earningsEndDate.toLocaleDateString()}</span>
+                    </div>
+                    <div class="detail-card">
+                        <span class="detail-label">Total Expected</span>
+                        <span class="detail-value profit">${formatMoney(product.totalExpected)}</span>
+                    </div>
+                </div>
+                
+                ${now < product.earningsStartDate ? `
+                    <div class="timer-display">
+                        <div class="timer-label">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span>Earnings Start In:</span>
+                        </div>
+                        <div class="timer-value">${timeUntilStart.text}</div>
+                    </div>
+                ` : now <= product.earningsEndDate ? `
+                    <div class="timer-display">
+                        <div class="timer-label">
+                            <i class="fas fa-clock"></i>
+                            <span>Time Remaining:</span>
+                        </div>
+                        <div class="timer-value">${timeRemaining.text}</div>
+                    </div>
+                ` : ''}
+                
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <span>Progress</span>
+                        <span>${progress.toFixed(1)}%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-${product.id}" style="width: ${progress}%"></div>
+                    </div>
+                </div>
+                
+                <div class="earnings-section">
+                    <div class="earnings-info">
+                        <div class="earnings-item">
+                            <span class="earnings-label">Total Earned</span>
+                            <span class="earnings-amount" id="earned-${product.id}">${formatMoney(totalEarned)}</span>
+                        </div>
+                        <div class="earnings-item">
+                            <span class="earnings-label">Available to Claim</span>
+                            <span class="earnings-amount" id="unclaimed-${product.id}">${formatMoney(unclaimed)}</span>
+                        </div>
+                    </div>
+                    <button class="claim-btn" id="claimBtn-${product.id}" onclick="claimProductEarnings('${product.id}')" ${unclaimed <= 0 ? 'disabled' : ''}>
+                        <i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+    updateSummaryStats();
+    
+    // Start real-time updates
+    startRealTimeUpdates();
+}
+
+/**
+ * Start real-time earnings updates (updates every second)
+ */
+function startRealTimeUpdates() {
+    if (earningsUpdateInterval) {
+        clearInterval(earningsUpdateInterval);
+    }
+    
+    earningsUpdateInterval = setInterval(() => {
+        updateAllEarningsDisplays();
+    }, 1000);
+}
+
+/**
+ * Update all earnings displays in real-time
+ */
+function updateAllEarningsDisplays() {
+    const myProductsTab = document.getElementById('myProductsTab');
+    if (!myProductsTab || !myProductsTab.classList.contains('active')) {
+        return;
+    }
+    
+    for (const product of myProductsList) {
+        // Skip completed products
+        if (product.status === 'completed') continue;
+        
+        const unclaimed = calculateCurrentUnclaimed(product);
+        const totalEarned = calculateTotalEarned(product);
+        const progress = calculateProgress(product);
+        
+        // Update earned amount
+        const earnedSpan = document.getElementById(`earned-${product.id}`);
+        if (earnedSpan) {
+            earnedSpan.textContent = formatMoney(totalEarned);
+        }
+        
+        // Update unclaimed amount
+        const unclaimedSpan = document.getElementById(`unclaimed-${product.id}`);
+        if (unclaimedSpan) {
+            unclaimedSpan.textContent = formatMoney(unclaimed);
+        }
+        
+        // Update claim button
+        const claimBtn = document.getElementById(`claimBtn-${product.id}`);
+        if (claimBtn) {
+            if (unclaimed <= 0) {
+                claimBtn.disabled = true;
+                claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> No earnings yet`;
+            } else {
+                claimBtn.disabled = false;
+                claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}`;
+            }
+        }
+        
+        // Update progress bar
+        const progressFill = document.getElementById(`progress-${product.id}`);
+        if (progressFill) {
+            progressFill.style.width = `${progress}%`;
+        }
+    }
+    
+    // Update summary stats
+    updateSummaryStats();
+}
+
+/**
+ * Claim earnings from a product
+ */
+async function claimProductEarnings(productId) {
+    const product = myProductsList.find(p => p.id === productId);
+    if (!product) {
+        showToast('Product not found', 'error');
+        return;
+    }
+    
+    const unclaimed = calculateCurrentUnclaimed(product);
+    
+    if (unclaimed <= 0) {
+        showToast('No earnings to claim', 'warning');
+        return;
+    }
+    
+    showLoading('Claiming earnings...');
+    
+    try {
+        const now = new Date();
+        const userProductRef = db.collection('userProducts').doc(productId);
+        
+        // Update Firestore
+        await userProductRef.update({
+            claimedProfit: firebase.firestore.FieldValue.increment(unclaimed),
+            lastClaimTimestamp: firebase.firestore.Timestamp.fromDate(now)
+        });
+        
+        // Update user balance
+        const userRef = db.collection('users').doc(currentUser.uid);
+        await userRef.update({
+            balance: firebase.firestore.FieldValue.increment(unclaimed),
+            totalEarned: firebase.firestore.FieldValue.increment(unclaimed),
+            history: firebase.firestore.FieldValue.arrayUnion({
+                id: generateId(),
+                type: 'product_profit',
+                description: `Profit from ${product.productName}`,
+                amount: unclaimed,
+                status: 'completed',
+                date: new Date().toISOString(),
+                metadata: {
+                    productId: product.productId,
+                    productName: product.productName
+                }
+            })
+        });
+        
+        // Update local data
+        currentUser.balance = (currentUser.balance || 0) + unclaimed;
+        currentUser.totalEarned = (currentUser.totalEarned || 0) + unclaimed;
+        
+        // Update local product
+        product.claimedProfit += unclaimed;
+        product.lastClaimTimestamp = now;
+        
+        showToast(`✅ Claimed ${formatMoney(unclaimed)} from ${product.productName}!`, 'success');
+        
+        // Refresh displays
+        await loadMyProducts();
+        await updateAllEarningsDisplays();
+        await loadUserData(); // Update main dashboard
+        
+    } catch (error) {
+        console.error('Error claiming earnings:', error);
+        showToast('Error claiming earnings: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Refresh my products manually
+ */
+async function refreshMyProducts() {
+    showToast('Refreshing investments...', 'info');
+    await renderMyProducts();
+    showToast('Refreshed!', 'success');
+}
+
+/**
+ * Stop real-time updates (call when leaving tab)
+ */
+function stopRealTimeUpdates() {
+    if (earningsUpdateInterval) {
+        clearInterval(earningsUpdateInterval);
+        earningsUpdateInterval = null;
+    }
+}
+
+// Add to your global exports
+window.renderMyProducts = renderMyProducts;
+window.refreshMyProducts = refreshMyProducts;
+window.claimProductEarnings = claimProductEarnings;
+window.stopRealTimeUpdates = stopRealTimeUpdates;
+
+// Optimized function to load user products using indexes
+async function loadMyProductsOptimized() {
+    if (!currentUser) return [];
+    
+    try {
+        // Uses composite index: userId + status + earningsEndDate
+        const snapshot = await db.collection('userProducts')
+            .where('userId', '==', currentUser.uid)
+            .where('status', '==', 'active')
+            .orderBy('earningsEndDate', 'desc')
+            .get();
+        
+        const activeProducts = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        // Also load completed products separately if needed
+        const completedSnapshot = await db.collection('userProducts')
+            .where('userId', '==', currentUser.uid)
+            .where('status', '==', 'completed')
+            .orderBy('purchaseDate', 'desc')
+            .limit(10)
+            .get();
+        
+        const completedProducts = completedSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        return [...activeProducts, ...completedProducts];
+        
+    } catch (error) {
+        console.error('Error loading products:', error);
+        return [];
+    }
+}
+
+async function checkIndexStatus() {
+    console.log('Checking index status...');
+    
+    try {
+        // Try a query that requires the composite index
+        const testQuery = await db.collection('userProducts')
+            .where('userId', '==', 'test')
+            .where('status', '==', 'active')
+            .orderBy('earningsEndDate', 'desc')
+            .limit(1)
+            .get();
+        
+        console.log('✅ Indexes are ready!');
+    } catch (error) {
+        if (error.code === 'failed-precondition') {
+            console.log('⚠️ Indexes are still building. Check Firebase Console for progress.');
+            console.log('Error:', error.message);
+        } else {
+            console.log('Other error:', error);
+        }
+    }
+} 
+
+async function fixMissingDurations() {
+    console.log('🔧 Fixing missing durations for existing products...');
+    
+    const snapshot = await db.collection('userProducts').get();
+    let fixed = 0;
+    
+    for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const updates = {};
+        let needsUpdate = false;
+        
+        // Check if durationDays is missing or zero
+        if (!data.durationDays || data.durationDays === 0) {
+            // Calculate from earnings dates if available
+            if (data.earningsStartDate && data.earningsEndDate) {
+                const start = data.earningsStartDate.toDate();
+                const end = data.earningsEndDate.toDate();
+                const durationDays = Math.round((end - start) / (1000 * 60 * 60 * 24));
+                
+                if (durationDays > 0) {
+                    updates.durationDays = durationDays;
+                    needsUpdate = true;
+                    console.log(`✅ Fixed duration for ${data.productName}: ${durationDays} days`);
+                }
+            }
+            // If still missing, try to get from original product
+            else if (data.productId) {
+                const productDoc = await db.collection('products').doc(data.productId).get();
+                if (productDoc.exists) {
+                    const product = productDoc.data();
+                    if (product.durationDays) {
+                        updates.durationDays = product.durationDays;
+                        needsUpdate = true;
+                        console.log(`✅ Fixed duration from product for ${data.productName}: ${product.durationDays} days`);
+                    }
+                }
+            }
+        }
+        
+        // Calculate totalExpected if missing
+        if ((!data.totalExpected || data.totalExpected === 0) && updates.durationDays) {
+            const dailyProfit = data.dailyProfit || 0;
+            updates.totalExpected = dailyProfit * updates.durationDays;
+            console.log(`✅ Fixed totalExpected for ${data.productName}: ${updates.totalExpected}`);
+        } else if ((!data.totalExpected || data.totalExpected === 0) && data.dailyProfit && data.durationDays) {
+            updates.totalExpected = data.dailyProfit * data.durationDays;
+            needsUpdate = true;
+        }
+        
+        if (needsUpdate) {
+            await db.collection('userProducts').doc(doc.id).update(updates);
+            fixed++;
+        }
+    }
+    
+    console.log(`✅ Fixed ${fixed} products`);
+    showToast(`Fixed ${fixed} products! Refresh the page.`, 'success');
+    
+    // Reload products
+    await loadMyProducts();
+    await renderMyProducts();
+}
+
+// Run the fix
+fixMissingDurations();
+
+// Debug a specific product
+async function debugProduct(productId) {
+    const doc = await db.collection('userProducts').doc(productId).get();
+    if (doc.exists) {
+        const data = doc.data();
+        console.log('Product Data:', {
+            name: data.productName,
+            durationDays: data.durationDays,
+            dailyProfit: data.dailyProfit,
+            totalExpected: data.totalExpected,
+            amount: data.amount,
+            dailyPercent: data.dailyPercent
+        });
+    }
+}

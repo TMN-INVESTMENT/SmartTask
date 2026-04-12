@@ -256,6 +256,8 @@
                 <li class="active" onclick="switchUserTab('overview')"><i class="fas fa-home"></i> <span>Overview</span></li>
                 <li onclick="switchUserTab('packages')"><i class="fas fa-box"></i> <span>VIP Packages</span></li>
                 <li onclick="switchUserTab('tasks1')"><i class="fas fa-tasks"></i> <span>Daily Tasks</span></li>
+                <li onclick="switchUserTab('productsMarket')"><i class="fas fa-store"></i> <span>Products</span></li>
+                <li onclick="switchUserTab('myProducts')"><i class="fas fa-chart-line"></i> <span>My Products</span></li>
                 <li onclick="switchUserTab('deposit')"><i class="fas fa-credit-card"></i> <span>Deposit</span></li>
                 <li onclick="switchUserTab('withdraw')"><i class="fas fa-money-bill-wave"></i> <span>Withdraw</span></li>
                 <li onclick="switchUserTab('referrals')"><i class="fas fa-users"></i> <span>Referrals</span></li>
@@ -511,6 +513,104 @@
         </div>
     </div>
 </div>
+
+<div id="productsMarketTab" class="tab-content">
+    <h2>📦 Investment Products</h2>
+    <div class="products-filter">
+        <input type="text" id="productSearch" placeholder="Search products..." oninput="filterProducts()">
+        <select id="productSort" onchange="sortProducts()">
+            <option value="name">Sort by Name</option>
+            <option value="minAmount">Sort by Min Investment</option>
+            <option value="dailyPercent">Sort by Daily Return</option>
+        </select>
+    </div>
+    <div class="products-grid" id="productsMarketGrid">
+        <div class="loading-products">Loading available products...</div>
+    </div>
+</div>
+
+<!-- My Products Tab - COMPLETELY REWRITTEN -->
+<div id="myProductsTab" class="tab-content">
+    <div class="my-products-header">
+        <h2><i class="fas fa-chart-line"></i> My Active Investments</h2>
+        <div class="header-actions">
+            <button onclick="refreshMyProducts()" class="refresh-btn" title="Refresh">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button onclick="switchUserTab('productsMarket')" class="action-btn small">
+                <i class="fas fa-store"></i> Browse More Products
+            </button>
+        </div>
+    </div>
+    
+    <!-- Summary Stats -->
+    <div class="investment-summary" id="investmentSummary">
+        <div class="summary-card">
+            <div class="summary-icon"><i class="fas fa-wallet"></i></div>
+            <div class="summary-info">
+                <span class="summary-label">Total Invested</span>
+                <span class="summary-value" id="totalInvestedAmount">0 TZS</span>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="summary-info">
+                <span class="summary-label">Total Earned</span>
+                <span class="summary-value profit" id="totalEarnedAmount">0 TZS</span>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-icon"><i class="fas fa-clock"></i></div>
+            <div class="summary-info">
+                <span class="summary-label">Active Investments</span>
+                <span class="summary-value" id="activeInvestmentsCount">0</span>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-icon"><i class="fas fa-calendar-week"></i></div>
+            <div class="summary-info">
+                <span class="summary-label">Today's Earnings</span>
+                <span class="summary-value profit" id="todayEarnings">0 TZS</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Products List Container -->
+    <div id="myProductsList" class="my-products-list">
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading your investments...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Product Purchase Modal -->
+<div id="productPurchaseModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeProductPurchaseModal()">&times;</span>
+        <h2 id="purchaseProductTitle">Purchase Product</h2>
+        <div id="purchaseProductDetails" class="purchase-details"></div>
+        <div class="form-group">
+            <label>Investment Amount (TZS)</label>
+            <input type="number" id="purchaseAmount" min="0" step="1000">
+            <small id="purchaseAmountHint"></small>
+        </div>
+        <div class="form-group">
+            <label>Expected Daily Return</label>
+            <div id="expectedDailyReturn">0 TZS</div>
+        </div>
+        <div class="form-group">
+            <label>Total Expected Profit</label>
+            <div id="expectedTotalProfit">0 TZS</div>
+        </div>
+        <div class="form-actions">
+            <button onclick="confirmProductPurchase()" class="auth-btn">
+                <i class="fas fa-shopping-cart"></i> Confirm Purchase
+            </button>
+            <button onclick="closeProductPurchaseModal()" class="auth-btn secondary">Cancel</button>
+        </div>
+    </div>
+</div
 
 <!-- Withdraw Tab - Step by Step -->
 <div id="withdrawTab" class="tab-content">
@@ -1298,6 +1398,9 @@
     <li onclick="switchSuperAdminTab('packages')">
         <i class="fas fa-box"></i> <span>VIP Packages</span>
     </li>
+    <li onclick="switchSuperAdminTab('productsManagement')">
+    <i class="fas fa-boxes"></i> <span>Products Management</span>
+</li>
     <li onclick="switchSuperAdminTab('transactions')">
         <i class="fas fa-exchange-alt"></i> <span>All Transactions</span>
     </li>
@@ -1453,6 +1556,23 @@
             </thead>
         <tbody id="superAdminsTableBody">
             <tr><td colspan="6" class="no-data">Loading admins...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Products Management Tab -->
+<div id="superAdminProductsManagementTab" class="tab-content">
+    <div class="tab-header">
+        <h2><i class="fas fa-boxes"></i> Investment Products</h2>
+        <button onclick="showAddProductForm()" class="action-btn">
+            <i class="fas fa-plus"></i> Add Product
+        </button>
+    </div>
+    <table class="data-table" id="productsTable">
+        <thead>
+            <tr><th>Name</th><th>Min</th><th>Max</th><th>Daily %</th><th>Window</th><th>Duration</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="productsTableBody"><tr><td colspan="8">Loading...</td></tr>
         </tbody>
     </table>
 </div>
@@ -3425,6 +3545,117 @@
                 <button type="submit" class="auth-btn">Save Payment Method</button>
             </form>
         </div>
+    </div>
+</div>
+
+<div id="productPurchaseModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeProductPurchaseModal()">&times;</span>
+        <h2 id="purchaseProductTitle">Purchase Product</h2>
+        <div id="purchaseProductDetails"></div>
+        <div class="form-group">
+            <label>Amount (TZS)</label>
+            <input type="number" id="purchaseAmount" min="0" step="1000">
+            <small id="purchaseAmountHint"></small>
+        </div>
+        <div class="form-actions">
+            <button onclick="confirmProductPurchase()" class="auth-btn">Confirm Purchase</button>
+            <button onclick="closeProductPurchaseModal()" class="auth-btn secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Product Form Modal (Super Admin) -->
+<div id="productFormModal" class="modal">
+    <div class="modal-content large">
+        <span class="close" onclick="closeProductFormModal()">&times;</span>
+        <h2 id="productFormTitle">Add New Product</h2>
+        
+        <form id="productForm" onsubmit="event.preventDefault(); saveProductToFirestore();">
+            <input type="hidden" id="productId">
+            
+            <!-- Basic Info -->
+            <div class="form-group">
+                <label>Product Name *</label>
+                <input type="text" id="productName" required placeholder="e.g., Gold Investment Plan">
+            </div>
+            
+            <div class="form-group">
+                <label>Description *</label>
+                <textarea id="productDescription" rows="3" required placeholder="Describe the investment product..."></textarea>
+            </div>
+            
+            <!-- Media Link Section (URL only) -->
+            <div class="form-group">
+                <label>Product Image/Video URL *</label>
+                <input type="url" id="productMediaUrl" placeholder="https://example.com/image.jpg or https://youtube.com/watch?v=..." 
+                       onchange="previewProductMedia()">
+                <small>Supported: Direct image links (JPG, PNG, GIF) or YouTube video links</small>
+            </div>
+            
+            <!-- Media Preview -->
+            <div id="productMediaPreview" class="product-media-preview" style="display: none;">
+                <div class="preview-header">
+                    <strong>Preview:</strong>
+                    <button type="button" onclick="clearProductMediaPreview()" class="remove-preview">✕</button>
+                </div>
+                <div id="previewContent"></div>
+            </div>
+            
+            <!-- Investment Parameters -->
+            <div class="form-row">
+                <div class="form-group half">
+                    <label>Minimum Investment (TZS) *</label>
+                    <input type="number" id="productMinAmount" required min="1000" step="1000">
+                </div>
+                <div class="form-group half">
+                    <label>Maximum Investment (TZS) *</label>
+                    <input type="number" id="productMaxAmount" required min="1000" step="1000">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group half">
+                    <label>Daily Return (%) *</label>
+                    <input type="number" id="productDailyPercent" required step="0.1" min="0.1">
+                    <small>e.g., 2.5 means 2.5% daily</small>
+                </div>
+                <div class="form-group half">
+                    <label>Duration (Days) *</label>
+                    <input type="number" id="productDurationDays" required min="1">
+                    <small>How many days earnings will last</small>
+                </div>
+            </div>
+            
+            <!-- Purchase Window -->
+            <div class="form-row">
+                <div class="form-group half">
+                    <label>Start Date (Purchase Window) *</label>
+                    <input type="datetime-local" id="productStartDate" required>
+                </div>
+                <div class="form-group half">
+                    <label>End Date (Purchase Window) *</label>
+                    <input type="datetime-local" id="productEndDate" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Status</label>
+                <select id="productStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="auth-btn">
+                    <i class="fas fa-save"></i> Save Product
+                </button>
+                <button type="button" onclick="closeProductFormModal()" class="auth-btn secondary">
+                    Cancel
+                </button>
+            </div>
+        </form>
     </div>
 </div>
     <!-- Firebase Initialization -->
