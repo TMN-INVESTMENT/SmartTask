@@ -29567,9 +29567,6 @@ async function renderMyProducts() {
                             <span class="earnings-amount" id="unclaimed-${product.id}">${formatMoney(unclaimed)}</span>
                         </div>
                     </div>
-                    <button class="claim-btn" id="claimBtn-${product.id}" onclick="claimProductEarnings('${product.id}')" ${unclaimed <= 0 ? 'disabled' : ''}>
-                        <i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}
-                    </button>
                 </div>
             </div>
         `;
@@ -29622,18 +29619,6 @@ function updateAllEarningsDisplays() {
         const unclaimedSpan = document.getElementById(`unclaimed-${product.id}`);
         if (unclaimedSpan) {
             unclaimedSpan.textContent = formatMoney(unclaimed);
-        }
-        
-        // Update claim button
-        const claimBtn = document.getElementById(`claimBtn-${product.id}`);
-        if (claimBtn) {
-            if (unclaimed <= 0) {
-                claimBtn.disabled = true;
-                claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> No earnings yet`;
-            } else {
-                claimBtn.disabled = false;
-                claimBtn.innerHTML = `<i class="fas fa-money-bill-wave"></i> Claim ${formatMoney(unclaimed)}`;
-            }
         }
         
         // Update progress bar
