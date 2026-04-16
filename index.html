@@ -603,11 +603,26 @@
 <div id="withdrawTab" class="tab-content">
     <h2>Withdraw Funds</h2>
     
+    <!-- Package Requirement Warning -->
+    <div id="noPackageWithdrawWarning" class="no-package-warning" style="display: none; margin-bottom: 20px;">
+        <i class="fas fa-box-open"></i>
+        <h4>Investment Required</h4>
+        <p>You need to invest in a VIP package or VVIP product before you can withdraw funds.</p>
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+            <button onclick="switchUserTab('packages')" class="action-btn">
+                <i class="fas fa-box"></i> Browse VIP Packages
+            </button>
+            <button onclick="switchUserTab('productsMarket')" class="action-btn">
+                <i class="fas fa-store"></i> Browse VVIP Products
+            </button>
+        </div>
+    </div>
+    
     <!-- Withdrawal Info -->
     <div class="withdraw-info-bar">
         <div class="info-item">
             <i class="fas fa-info-circle"></i>
-            <span>Min: 3,000 TZS</span>
+            <span>Min: 10,000 TZS</span>
         </div>
         <div class="info-item">
             <i class="fas fa-clock"></i>
@@ -617,8 +632,13 @@
             <i class="fas fa-gift"></i>
             <span>Referral earnings withdrawable anytime</span>
         </div>
+        <div class="info-item">
+            <i class="fas fa-box"></i>
+            <span>Active package required to withdraw</span>
+        </div>
     </div>
     
+    <!-- Rest of the withdraw tab remains the same... -->
     <!-- Balance Display -->
     <div class="balance-cards">
         <div class="balance-card">
@@ -681,7 +701,7 @@
         
         <div class="form-group">
             <label>Amount (TZS) *</label>
-            <input type="number" id="withdrawAmount" placeholder="Minimum 3,000" min="3000" required>
+            <input type="number" id="withdrawAmount" placeholder="Minimum 10,000" min="10000" required>
             <small>Available: <span id="availableBalance">0 TZS</span></small>
         </div>
         
@@ -1880,7 +1900,7 @@
                 <p>1. By registering, you agree to participate in task-based earning activities.</p>
                 <p>2. Each user must complete 3 rating tasks daily to earn profits.</p>
                 <p>3. Minimum deposit is 10,000 TZS.</p>
-                <p>4. Withdrawals are processed once per day with minimum 3,000 TZS.</p>
+                <p>4. Withdrawals are processed once per day with minimum 10,000 TZS.</p>
                 <p>5. Referral commissions are withdrawable immediately.</p>
                 <p>6. We reserve the right to modify terms with notice.</p>
                 <p>7. Users must be 18 years or older.</p>

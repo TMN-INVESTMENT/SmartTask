@@ -43,12 +43,13 @@ let deposits = [];
 let withdrawals = [];
 let tasks = [];
 // Update the systemSettings object (find this in your code and add withdrawalFee)
+// Update the systemSettings object
 let systemSettings = {
     minDeposit: 10000,
     maxDeposit: 10000000,
-    minWithdrawal: 3000,
-    maxWithdrawal: 1000000,
-    withdrawalFee: 10, // Add this - 10% fee
+    minWithdrawal: 10000,
+    maxWithdrawal: 10000000, // Changed from 1000000 (1 million) to 10,000,000 (10 million)
+    withdrawalFee: 10,
     registrationBonus: 2000,
     dailyLoginBonus: 200,
     referralLevels: [
@@ -2944,6 +2945,18 @@ async function requestWithdrawal() {
     const phone = document.getElementById('withdrawPhone')?.value;
     const method = document.getElementById('withdrawMethod')?.value;
     
+    // ============================================
+    // NEW: CHECK IF USER HAS ACTIVE PACKAGES
+    // ============================================
+    const hasPackages = currentUser.activePackages && currentUser.activePackages.length > 0;
+    const hasProducts = currentUser.userProducts && currentUser.userProducts.length > 0;
+    
+    if (!hasPackages && !hasProducts) {
+        showToast('❌ You must invest in a VIP package or product before you can withdraw!', 'error');
+        showToast('Please go to VIP Packages or VVIP PRODUCTS to invest first.', 'warning');
+        return;
+    }
+    
     if (!amount || amount < systemSettings.minWithdrawal) {
         showToast(`Minimum withdrawal is ${formatMoney(systemSettings.minWithdrawal)}`, 'error');
         return;
@@ -3043,7 +3056,6 @@ async function requestWithdrawal() {
         showToast('Error processing withdrawal', 'error');
     }
 }
-
 // ============================================
 // HISTORY FUNCTIONS
 // ============================================
@@ -4553,7 +4565,7 @@ async function saveSystemSettings() {
     try {
         systemSettings.minDeposit = parseFloat(document.getElementById('minDeposit')?.value) || 10000;
         systemSettings.maxDeposit = parseFloat(document.getElementById('maxDeposit')?.value) || 10000000;
-        systemSettings.minWithdrawal = parseFloat(document.getElementById('minWithdrawal')?.value) || 3000;
+        systemSettings.minWithdrawal = parseFloat(document.getElementById('minWithdrawal')?.value) || 10000;
         systemSettings.maxWithdrawal = parseFloat(document.getElementById('maxWithdrawal')?.value) || 1000000;
         systemSettings.registrationBonus = parseFloat(document.getElementById('regBonus')?.value) || 2000;
         systemSettings.dailyLoginBonus = parseFloat(document.getElementById('loginBonus')?.value) || 200;
@@ -4582,8 +4594,8 @@ function resetSystemSettings() {
     systemSettings = {
         minDeposit: 10000,
         maxDeposit: 10000000,
-        minWithdrawal: 3000,
-        maxWithdrawal: 1000000,
+        minWithdrawal: 10000,
+        maxWithdrawal: 10000000, // Changed to 10,000,000
         registrationBonus: 2000,
         dailyLoginBonus: 200,
         referralLevels: [
@@ -6075,11 +6087,15 @@ async function switchUserTab(tabName) {
                 initDepositTab();
             }
         }, 100);
-    } else if (tabName === 'withdraw') {
-        console.log('Switching to withdraw tab');
-        if (currentUser && typeof loadWithdrawAccounts === 'function') {
-            loadWithdrawAccounts();
-        }
+} else if (tabName === 'withdraw') {
+    console.log('Switching to withdraw tab');
+    if (currentUser) {
+        await loadWithdrawAccounts();
+        checkWithdrawalEligibility();
+    }
+    if (typeof loadWithdrawAccounts === 'function') {
+        loadWithdrawAccounts();
+    }
     } else if (tabName === 'productsMarket') {
         // ============================================
         // LOAD PRODUCTS MARKETPLACE
@@ -7438,20 +7454,23 @@ async function saveWithdrawAccount() {
     }
 }
 
-// Withdrawal navigation
-// ============================================
-// FIXED NEXT WITHDRAW STEP FUNCTION
-// ============================================
-
- // ============================================
-// UPDATED WITHDRAWAL FUNCTIONS WITH 10% FEE
-// ============================================
-
 function nextWithdrawStep(currentStep) {
     if (currentStep === 1) {
         // Validate step 1
         if (!selectedWithdrawAccount) {
             showToast('Please select a bank account', 'error');
+            return;
+        }
+        
+        // ============================================
+        // CHECK IF USER HAS ACTIVE PACKAGES OR PRODUCTS
+        // ============================================
+        const hasPackages = currentUser.activePackages && currentUser.activePackages.length > 0;
+        const hasProducts = currentUser.userProducts && currentUser.userProducts.length > 0;
+        
+        if (!hasPackages && !hasProducts) {
+            showToast('❌ You must invest in a VIP package or product before you can withdraw!', 'error');
+            showToast('Please go to VIP Packages or VVIP PRODUCTS to invest first.', 'warning');
             return;
         }
         
@@ -7616,6 +7635,52 @@ function nextWithdrawStep(currentStep) {
             step3Indicator.classList.add('active');
         }
     }
+}
+
+// Check if user can withdraw (has active packages or products)
+function checkWithdrawalEligibility() {
+    const hasPackages = currentUser && currentUser.activePackages && currentUser.activePackages.length > 0;
+    const hasProducts = currentUser && currentUser.userProducts && currentUser.userProducts.length > 0;
+    
+    const warningElement = document.getElementById('noPackageWithdrawWarning');
+    const withdrawContent = document.querySelector('#withdrawTab .withdraw-info-bar');
+    
+    if (!hasPackages && !hasProducts) {
+        if (warningElement) warningElement.style.display = 'block';
+        if (withdrawContent) {
+            // Disable withdrawal inputs
+            const amountInput = document.getElementById('withdrawAmount');
+            const nextBtn = document.getElementById('withdrawStep1Next');
+            if (amountInput) amountInput.disabled = true;
+            if (nextBtn) nextBtn.disabled = true;
+        }
+        return false;
+    } else {
+        if (warningElement) warningElement.style.display = 'none';
+        if (withdrawContent) {
+            const amountInput = document.getElementById('withdrawAmount');
+            const nextBtn = document.getElementById('withdrawStep1Next');
+            if (amountInput) amountInput.disabled = false;
+            // Don't auto-enable next btn - let account selection handle it
+        }
+        return true;
+    }
+}
+
+// Call this when loading the withdraw tab
+async function loadWithdrawTab() {
+    await loadWithdrawAccounts();
+    checkWithdrawalEligibility();
+    toggleOtherBankField();
+}
+
+// Update the withdraw tab initialization
+function initWithdrawTab() {
+    if (currentUser) {
+        loadWithdrawAccounts();
+        checkWithdrawalEligibility();
+    }
+    toggleOtherBankField();
 }
 
 // ============================================
@@ -15064,7 +15129,7 @@ async function loadSystemSettingsForSuper() {
             
             document.getElementById('sysMinDeposit').value = settings.minDeposit || 10000;
             document.getElementById('sysMaxDeposit').value = settings.maxDeposit || 10000000;
-            document.getElementById('sysMinWithdrawal').value = settings.minWithdrawal || 3000;
+            document.getElementById('sysMinWithdrawal').value = settings.minWithdrawal || 10000;
             document.getElementById('sysMaxWithdrawal').value = settings.maxWithdrawal || 1000000;
             document.getElementById('sysRegBonus').value = settings.registrationBonus || 2000;
             document.getElementById('sysLoginBonus').value = settings.dailyLoginBonus || 200;
@@ -15086,7 +15151,7 @@ async function saveAllSystemSettings() {
     const newSettings = {
         minDeposit: parseFloat(document.getElementById('sysMinDeposit').value) || 10000,
         maxDeposit: parseFloat(document.getElementById('sysMaxDeposit').value) || 10000000,
-        minWithdrawal: parseFloat(document.getElementById('sysMinWithdrawal').value) || 3000,
+        minWithdrawal: parseFloat(document.getElementById('sysMinWithdrawal').value) || 10000,
         maxWithdrawal: parseFloat(document.getElementById('sysMaxWithdrawal').value) || 1000000,
         registrationBonus: parseFloat(document.getElementById('sysRegBonus').value) || 2000,
         dailyLoginBonus: parseFloat(document.getElementById('sysLoginBonus').value) || 200,
@@ -16513,7 +16578,7 @@ function showSystemSettingsModal() {
     // Load current settings
     document.getElementById('modalMinDeposit').value = systemSettings.minDeposit || 10000;
     document.getElementById('modalMaxDeposit').value = systemSettings.maxDeposit || 10000000;
-    document.getElementById('modalMinWithdrawal').value = systemSettings.minWithdrawal || 3000;
+    document.getElementById('modalMinWithdrawal').value = systemSettings.minWithdrawal || 10000;
     document.getElementById('modalMaxWithdrawal').value = systemSettings.maxWithdrawal || 1000000;
     document.getElementById('modalRegBonus').value = systemSettings.registrationBonus || 2000;
     document.getElementById('modalLoginBonus').value = systemSettings.dailyLoginBonus || 200;
@@ -16560,7 +16625,7 @@ async function saveModalSettings() {
     const newSettings = {
         minDeposit: parseFloat(document.getElementById('modalMinDeposit').value) || 10000,
         maxDeposit: parseFloat(document.getElementById('modalMaxDeposit').value) || 10000000,
-        minWithdrawal: parseFloat(document.getElementById('modalMinWithdrawal').value) || 3000,
+        minWithdrawal: parseFloat(document.getElementById('modalMinWithdrawal').value) || 10000,
         maxWithdrawal: parseFloat(document.getElementById('modalMaxWithdrawal').value) || 1000000,
         registrationBonus: parseFloat(document.getElementById('modalRegBonus').value) || 2000,
         dailyLoginBonus: parseFloat(document.getElementById('modalLoginBonus').value) || 200,
@@ -21343,7 +21408,7 @@ let todayTotalWithdrawals = 0;
 // Amount ranges
 const DEPOSIT_MIN = 10000;
 const DEPOSIT_MAX = 10000000;
-const WITHDRAWAL_MIN = 3000;
+const WITHDRAWAL_MIN = 10000;
 const WITHDRAWAL_MAX = 10000000;
 
 /**
@@ -22080,6 +22145,8 @@ const translations = {
         'overview': 'Overview',
         'vip_packages': 'VIP Packages',
         'daily_tasks': 'Daily Tasks',
+        'VVIP PRODUCTS': 'VVIP PRODUCTS',
+        'My Products': 'My Products',
         'deposit': 'Deposit',
         'withdraw': 'Withdraw',
         'referrals': 'Referrals',
@@ -22155,7 +22222,7 @@ const translations = {
         
         // Withdraw
         'withdraw_funds': 'Withdraw Funds',
-        'min_withdraw': 'Min: 3,000 TZS',
+        'min_withdraw': 'Min: 10,000 TZS',
         'once_per_day': 'Once per day',
         'referral_earnings_withdrawable': 'Referral earnings withdrawable anytime',
         'available_balance': 'Available Balance',
@@ -22360,7 +22427,7 @@ const translations = {
         
         // Withdraw
         'withdraw_funds': 'Toa Pesa',
-        'min_withdraw': 'Kiwango cha chini: 3,000 TZS',
+        'min_withdraw': 'Kiwango cha chini: 10,000 TZS',
         'once_per_day': 'Mara moja kwa siku',
         'referral_earnings_withdrawable': 'Mapato ya marejesho yanaweza kutolewa wakati wowote',
         'available_balance': 'Salio linalopatikana',
